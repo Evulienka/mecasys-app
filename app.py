@@ -3,6 +3,7 @@ import pickle
 import pandas as pd
 import numpy as np
 import requests
+import os
 from datetime import datetime
 
 # --- 1. KONFIGURÁCIA APLIKÁCIE ---
@@ -11,7 +12,7 @@ st.set_page_config(page_title="Mecasys CP Generátor", layout="wide")
 if 'kosik' not in st.session_state:
     st.session_state['kosik'] = []
 
-# --- 2. FUNKCIA PRE GOOGLE FORM (OPRAVENÉ ID KÓDY) ---
+# --- 2. FUNKCIA PRE GOOGLE FORM ---
 def ulozit_do_google_form(data):
     url = "https://docs.google.com/forms/d/e/1FAIpQLSf92s3nBMz6Oviq6WgNLyid9GmcNgAtQOAuWUVBPt9mcrotzw/formResponse"
     
@@ -41,13 +42,11 @@ def ulozit_do_google_form(data):
     }
     
     try:
-        r = requests.post(url, data=payload)
-        if r.status_code != 200:
-            st.error(f"Chyba pri zápise (Status: {r.status_code})")
-    except Exception as e:
-        st.error(f"Chyba pripojenia ku Google Form: {e}")
+        requests.post(url, data=payload)
+    except:
+        pass
 
-# --- 3. KOMPLETNÁ DATABÁZA ZÁKAZNÍKOV ---
+# --- 3. DATABÁZA ZÁKAZNÍKOV (VŠETCI) ---
 db_zakaznici = {
     "A2B, s.r.o.": (0.83, "SK"), "AAH PLASTICS Slovakia s. r. o.": (0.80, "SK"),
     "Adient Innotec Metal Technologies s.r.o.": (0.31, "SK"), "Adient Seating S.A.S.": (0.33, "FR"),
@@ -142,7 +141,7 @@ db_zakaznici = {
     "Yanfeng Namestovo": (0.82, "SK"), "Železiarstvo Páleník s.r.o.": (0.33, "SK"), "ZKW Slovakia s.r.o.": (0.44, "SK")
 }
 
-# --- 4. KOMPLETNÁ DATABÁZA MATERIÁLOV ---
+# --- 4. DATABÁZA MATERIÁLOV (KOMPLETNÁ) ---
 db_materialy = {
     "OCEĽ": {
         "1.6580": 7900.0, "1.0037": 7900.0, "1.0038": 7900.0, "1.0039": 7900.0, "1.0044": 7900.0,
@@ -173,23 +172,31 @@ db_materialy = {
     }
 }
 
-# --- 5. NAČÍTANIE MODELU (VÝLUČNE) ---
+# --- 5. LOKALIZÁCIA A NAČÍTANIE MODELU ---
 @st.cache_resource
 def load_model():
-    try:
-        with open("model.pkcls", "rb") as f:
-            return pickle.load(f)
-    except FileNotFoundError:
-        st.error("❌ Kritická chyba: Súbor 'model.pkcls' nebol nájdený v priečinku aplikácie.")
-        return None
-    except Exception as e:
-        st.error(f"❌ Chyba pri načítaní modelu: {e}")
-        return None
+    possible_paths = [
+        os.path.join(os.getcwd(), "model.pkcls"),
+        os.path.join(os.path.dirname(__file__), "model.pkcls"),
+        "model.pkcls"
+    ]
+    for path in possible_paths:
+        if os.path.exists(path):
+            try:
+                with open(path, "rb") as f:
+                    return pickle.load(f)
+            except Exception as e:
+                st.error(f"Súbor nájdený na {path}, ale nastala chyba: {e}")
+    return None
 
 model = load_model()
 
 # --- 6. UI APLIKÁCIE ---
 st.title("⚙️ MECASYS - Master CP Generátor")
+
+if model is None:
+    st.error("❌ Kritická chyba: AI Model (model.pkcls) nebol nájdený. Výpočet cien je deaktivovaný.")
+    st.stop()
 
 with st.sidebar:
     st.header("Zákazník a CP")
@@ -229,83 +236,55 @@ with c3:
     ko_cena_ks_vstup = st.number_input("Kooperácia (€/ks):", value=0.00)
 
 if st.button("➕ PRIDAŤ DO KOŠÍKA"):
-    if "KR" in tvar_vstup:
-        vaha_vypocet = (np.pi * (D_vstup**2) * L_vstup * hustota_val) / 4000000000
-    else:
-        vaha_vypocet = (D_vstup * D_vstup * L_vstup * hustota_val) / 1000000000
-        
+    vaha_vypocet = (np.pi*(D_vstup**2)*L_vstup*hustota_val)/4e9 if "KR" in tvar_vstup else (D_vstup**2*L_vstup*hustota_val)/1e9
     st.session_state['kosik'].append({
         "ID_komponent": polozka_vstup, "Kusy (n)": n_vstup, "Čas výroby (hod/ks)": cas_vstup, "Náročnosť": narocnost_vstup,
         "Kategória mat.": mat_kat, "Akosť": akost_vstup, "Tvar": "KR" if "KR" in tvar_vstup else "STV", 
         "Rozmer D": D_vstup, "Rozmer L": L_vstup, "Hustota": hustota_val, "Hmotnosť 1ks": vaha_vypocet, 
         "Cena_material_predpoklad": cena_komp_vstup, "ko_cena_ks": ko_cena_ks_vstup
     })
-    st.success(f"Položka '{polozka_vstup}' pridaná.")
+    st.success(f"Diel '{polozka_vstup}' pridaný.")
 
-# --- 7. STRIKTNÁ KALKULÁCIA CEZ MODEL ---
+# --- 7. VÝPOČET A ODOSLANIE ---
 if st.session_state['kosik']:
     st.divider()
-    st.write("### 🛒 Položky v príprave")
-    df_temp = pd.DataFrame(st.session_state['kosik'])
-    st.dataframe(df_temp[["ID_komponent", "Kusy (n)", "Akosť", "Hmotnosť 1ks"]])
+    st.write("### 🛒 Obsah košíka")
+    st.dataframe(pd.DataFrame(st.session_state['kosik'])[["ID_komponent", "Kusy (n)", "Akosť", "Hmotnosť 1ks"]])
 
     if st.button("🏁 NACENIŤ A ODOSLAŤ PONUKU", type="primary"):
-        if not model:
-            st.error("❌ Výpočet nie je možný. Model nie je k dispozícii.")
-            st.stop()
-            
         celkovy_objem_cp = sum(i['Kusy (n)'] for i in st.session_state['kosik'])
-        datum_pre_model = cp_datum.strftime("%Y-%m-%d")
         vysledky_pre_tabulku = []
 
         for p in st.session_state['kosik']:
-            try:
-                vstup_data = pd.DataFrame([{
-                    "CP_datum": datum_pre_model, "CP_objem": celkovy_objem_cp, 
-                    "n_komponent": p["Kusy (n)"], "cas_v_predpoklad_komponent (hod)": p["Čas výroby (hod/ks)"],
-                    "v_narocnost": int(p["Náročnosť"]), "zakaznik_lojalita": lojalita, 
-                    "zakaznik_krajina": krajina, "hmotnost": p["Hmotnosť 1ks"], 
-                    "cena_material_predpoklad": p["Cena_material_predpoklad"], 
-                    "ko_cena_ks": p["ko_cena_ks"], "material_nazov": p["Kategória mat."],
-                    "tvar_polotovaru": p["Tvar"], "D(mm)": p["Rozmer D"], "L(mm)": p["Rozmer L"],
-                    "material_HUSTOTA": p["Hustota"], "material_AKOST": p["Akosť"]
-                }])
-                
-                # JEDINÝ SPÔSOB VÝPOČTU:
-                j_cena = float(model.predict(vstup_data)[0])
-                c_cena = j_cena * p["Kusy (n)"]
-                
-                vysledky_pre_tabulku.append({
-                    "ID_komponent": p["ID_komponent"],
-                    "Množstvo (ks)": p["Kusy (n)"],
-                    "Jednotková cena (€)": f"{j_cena:.2f}",
-                    "Celková cena (€)": f"{c_cena:.2f}"
-                })
+            vstup_df = pd.DataFrame([{
+                "CP_datum": cp_datum.strftime("%Y-%m-%d"), "CP_objem": celkovy_objem_cp, 
+                "n_komponent": p["Kusy (n)"], "cas_v_predpoklad_komponent (hod)": p["Čas výroby (hod/ks)"],
+                "v_narocnost": int(p["Náročnosť"]), "zakaznik_lojalita": lojalita, 
+                "zakaznik_krajina": krajina, "hmotnost": p["Hmotnosť 1ks"], 
+                "cena_material_predpoklad": p["Cena_material_predpoklad"], 
+                "ko_cena_ks": p["ko_cena_ks"], "material_nazov": p["Kategória mat."],
+                "tvar_polotovaru": p["Tvar"], "D(mm)": p["Rozmer D"], "L(mm)": p["Rozmer L"],
+                "material_HUSTOTA": p["Hustota"], "material_AKOST": p["Akosť"]
+            }])
+            
+            j_cena = float(model.predict(vstup_df)[0])
+            c_suma = j_cena * p["Kusy (n)"]
+            
+            vysledky_pre_tabulku.append({"Diel": p["ID_komponent"], "Ks": p["Kusy (n)"], "Jednotková": f"{j_cena:.2f} €", "Celkom": f"{c_suma:.2f} €"})
 
-                # Odoslanie do Google Form
-                data_log = {
-                    "cas_zapisu": datetime.now().strftime("%d.%m.%Y %H:%M:%S"),
-                    "cp_cislo": cislo_cp, "zakaznik": finalny_zakaznik, "krajina": krajina,
-                    "lojalita": str(lojalita), "id_komponent": p["ID_komponent"],
-                    "polozka": p["ID_komponent"], "kusy": str(p["Kusy (n)"]),
-                    "cp_objem": str(celkovy_objem_cp), "cas_vyroby": str(p["Čas výroby (hod/ks)"]),
-                    "narocnost": str(p["Náročnosť"]), "kat_mat": p["Kategória mat."],
-                    "akost": p["Akosť"], "tvar": p["Tvar"], "rozmer_d": str(p["Rozmer D"]),
-                    "rozmer_l": str(p["Rozmer L"]), "hustota": str(p["Hustota"]),
-                    "vaha": f"{p['Hmotnosť 1ks']:.4f}", "cena_mat_kg": f"{p['Cena_material_predpoklad']:.2f}",
-                    "kooperacia": f"{p['ko_cena_ks']:.2f}", "jednotkova_cena": f"{j_cena:.2f}",
-                    "celkova_suma": f"{c_cena:.2f}"
-                }
-                ulozit_do_google_form(data_log)
+            # Google Form Log
+            data_log = {
+                "cas_zapisu": datetime.now().strftime("%d.%m.%Y %H:%M:%S"), "cp_cislo": cislo_cp, 
+                "zakaznik": finalny_zakaznik, "krajina": krajina, "lojalita": str(lojalita), 
+                "id_komponent": p["ID_komponent"], "polozka": p["ID_komponent"], "kusy": str(p["Kusy (n)"]),
+                "cp_objem": str(celkovy_objem_cp), "cas_vyroby": str(p["Čas výroby (hod/ks)"]),
+                "narocnost": str(p["Náročnosť"]), "kat_mat": p["Kategória mat."],
+                "akost": p["Akosť"], "tvar": p["Tvar"], "rozmer_d": str(p["Rozmer D"]),
+                "rozmer_l": str(p["Rozmer L"]), "hustota": str(p["Hustota"]),
+                "vaha": f"{p['Hmotnosť 1ks']:.4f}", "cena_mat_kg": f"{p['Cena_material_predpoklad']:.2f}",
+                "kooperacia": f"{p['ko_cena_ks']:.2f}", "jednotkova_cena": f"{j_cena:.2f}", "celkova_suma": f"{c_suma:.2f}"
+            }
+            ulozit_do_google_form(data_log)
 
-            except Exception as e:
-                st.error(f"❌ Model zlyhal pri dieli {p['ID_komponent']}: {e}")
-                st.stop()
-
-        st.subheader("📊 Výsledná kalkulácia (AI predikcia)")
         st.table(pd.DataFrame(vysledky_pre_tabulku))
-        
-        celkova_hodnota = sum(float(v["Celková cena (€)"]) for v in vysledky_pre_tabulku)
-        st.metric("CELKOVÁ SUMA PONUKY (BEZ DPH)", f"{celkova_hodnota:.2f} €")
-        st.success("Dáta z modelu úspešne zapísané do Google tabuľky.")
         st.balloons()
