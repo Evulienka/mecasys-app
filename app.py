@@ -6,221 +6,278 @@ from datetime import datetime
 from fpdf import FPDF
 from streamlit_gsheets import GSheetsConnection
 
-# --- 1. KONFIGURÁCIA STRÁNKY ---
+# --- 1. KONFIGURÁCIA APLIKÁCIE ---
 st.set_page_config(page_title="Mecasys CP Generátor", layout="wide")
 
 if 'kosik' not in st.session_state:
     st.session_state['kosik'] = []
 
-# TVOJ LINK NA GOOGLE SHEETS
+# URL tvojej Google tabuľky pre ukladanie histórie
 URL_TABULKY = "https://docs.google.com/spreadsheets/d/1znV5wh_PkVgjSzEV4-ZqyK39BVghS7JJHLgfpPjYhY0/edit?usp=sharing"
 
-# --- 2. NAČÍTANIE MODELU ---
+# --- 2. NAČÍTANIE MODELU A PRIPOJENIE ---
 @st.cache_resource
 def load_model():
     try:
         with open("model.pkcls", "rb") as f:
             return pickle.load(f)
-    except Exception as e:
+    except:
         return None
 
 model = load_model()
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# --- 3. POMOCNÉ FUNKCIE ---
+# --- 3. KOMPLETNÁ DATABÁZA ZÁKAZNÍKOV (ZO VŠETKÝCH SCREENSHOTOV) ---
+db_zakaznici = {
+    "A2B, s.r.o.": (0.83, "SK"), "AAH PLASTICS Slovakia s. r. o.": (0.80, "SK"),
+    "Adient Innotec Metal Technologies s.r.o.": (0.31, "SK"), "Adient Seating S.A.S.": (0.33, "FR"),
+    "Adient Seating Slovakia s.r.o.": (0.88, "SK"), "Agromatic Regelungstechnik GmbH": (0.33, "DE"),
+    "Air International Thermal (Slovakia) s.r.o.": (0.33, "SK"), "AKROMECA": (0.33, "FR"),
+    "Alkadur Robotsystems GmbH": (0.14, "DE"), "AMINOXY LIMITED": (0.33, "SK"),
+    "ANDRITZ Separation GmbH": (0.19, "DE"), "Anton Romaňák - KOVOTROM": (0.20, "SK"),
+    "Armaturen- und Autogengerätefabrik ewo": (0.06, "DE"), "ATEM (Siège)": (0.56, "FR"),
+    "Avendor GmbH": (0.33, "DE"), "Bayer Prototypen": (0.33, "DE"),
+    "BCF EUROPE s.r.o": (0.88, "SK"), "BelFox Torautomatik GmbH": (0.25, "DE"),
+    "Ben Innova Systemtechnik GmbH": (0.09, "DE"), "BIA Plastic and Plating Technology Slovakia s.r.o.": (0.33, "SK"),
+    "Bienen Ruck GmbH": (0.25, "DE"), "Big Box, s.r.o.": (0.33, "SK"),
+    "Bograma AG": (0.33, "SUI"), "Brückner Slovakia, s.r.o.": (0.75, "SK"),
+    "CABLEX SK s.r.o.": (0.57, "SK"), "CD - profil s.r.o.": (0.50, "SK"),
+    "CIPI, s.r.o.": (0.40, "SK"), "Craemer Slovakia, s. r. o.": (0.75, "SK"),
+    "Deutsche Wecotech GmbH": (0.33, "DE"), "DISTLER ENGINEERING s.r.o.": (0.33, "SK"),
+    "DITIS Technology s.r.o.": (0.67, "SK"), "Dominik Beňuš ALUMINIUM ORAVA": (0.67, "SK"),
+    "DSD NOELL GmbH": (0.33, "DE"), "Dušan Mokošák": (0.67, "SK"),
+    "EBZ SysTec GmbH": (0.29, "DE"), "ECCO Slovakia, a.s.": (0.67, "SK"),
+    "Edge Autonomy Riga SIA": (0.60, "LT"), "EDM, s.r.o.": (0.33, "SK"),
+    "Elster s. r. o.": (0.75, "SK"), "ERCE CZ, s.r.o.": (0.75, "CZ"),
+    "Eurostyle Systems Liptovský Mikuláš s.r.o.": (0.67, "SK"), "EXAIL Robotics": (0.75, "FR"),
+    "EXCENT": (0.33, "FR"), "Exerion Precision Technology Olomouc s.r.o.": (0.33, "CZ"),
+    "Fabryka Plastików Gliwice": (0.33, "PL"), "FDonlinehandel": (0.33, "DE"),
+    "Franz Nüsing GmbH & Co. KG": (0.25, "DE"), "Frauenthal Gnotec Slovakia s.r.o.": (0.18, "SK"),
+    "FREMACH TRNAVA, s.r.o.": (0.33, "SK"), "GEDAST s. r. o.": (0.20, "SK"),
+    "GERGONNE SLOVENSKO s.r.o.": (0.75, "SK"), "Gluematic GmbH & Co.KG": (0.25, "DE"),
+    "goracon systemtechnik GmbH": (0.33, "DE"), "Groupe Plastivaloire": (0.71, "SK"),
+    "Guzik Pavol": (0.67, "SK"), "H.Moryl GmbH": (0.33, "DE"),
+    "Hager & Meisinger GmbH": (0.33, "DE"), "HARTS": (0.33, "SK"),
+    "HDF, s.r.o.": (0.25, "SK"), "Heraldik Slovakia s. r. o.": (0.33, "SK"),
+    "HERN s.r.o.": (0.08, "SK"), "Holz-Her Maschinenbau GmbH": (0.33, "AT"),
+    "Honeywell Corp": (0.33, "USA"), "HYDAC Electronic, s.r.o.": (0.88, "SK"),
+    "Hyundai Glovis Czech Republic s.r.o.": (0.80, "CZ"), "Hyundai Motor Manufacturing Czech s.r.o.": (0.67, "CZ"),
+    "IBEX GmbH": (0.33, "DE"), "Ideal Fertigung": (0.33, "DE"),
+    "iGrow Network, s.r.o.": (0.17, "SK"), "Ing. Róbert Palider": (0.33, "SK"),
+    "IRTS - Headquarters": (0.33, "FR"), "ITW Slovakia s.r.o.": (0.67, "SK"),
+    "IWT Industrielle Wickeltechnologie GmbH": (0.33, "DE"), "J.P.Plast Svatoborská": (0.33, "CZ"),
+    "JAFFA, s.r.o.": (0.67, "SK"), "Jiří Řebíček - Metalplast, s.r.o.": (0.67, "CZ"),
+    "JMP Plast s.r.o.": (0.70, "SK"), "Josef Schwan GmbH": (0.25, "DE"),
+    "Jozef Barnáš JO - BA": (0.67, "SK"), "Jozef Gender": (0.67, "SK"),
+    "JP-AUTO, s. r. o.": (0.33, "SK"), "JUMI s.r.o. Košice": (0.33, "SK"),
+    "JWS Zerspanungstechnik GmbH": (0.33, "DE"), "Kamil Bujňák - OBCHOD U KAMILA": (0.33, "SK"),
+    "KIRON": (0.33, "DE"), "KOVOT s. r. o.": (0.80, "SK"),
+    "KOVOVÝROBA, spol. s r.o.": (0.33, "SK"), "KOWA, s.r.o.": (0.33, "SK"),
+    "KREDUS, s.r.o.": (0.33, "SK"), "KSA Benelux B.V.": (0.33, "NL"),
+    "KUHLA® Kühltechnik & Ladenbau GmbH": (0.33, "DE"), "LEBEDA Tools s.r.o.": (0.33, "CZ"),
+    "LEPAL TECHNIK, spol. s r.o.": (0.33, "SK"), "LETECH INDUSTRY s. r. o.": (0.33, "SK"),
+    "LinEx Slovakia, s. r. o.": (0.50, "SK"), "LPH Vranov n/T, s.r.o.": (0.43, "SK"),
+    "Lubomir Hutlas": (0.67, "SK"), "Lubomir Jagnesak": (0.80, "SK"),
+    "m conso s.r.o.": (0.33, "SK"), "M.O.U.D. s. r. o.": (0.60, "SK"),
+    "MAGNA SLOVTECA, s.r.o.": (0.25, "SK"), "MAGONTEC GmbH": (0.25, "DE"),
+    "MAHLE Behr Námestovo s.r.o.": (0.73, "SK"), "MAHLE Industrial Thermal Systems Námestovo s.r.o.": (0.67, "SK"),
+    "MAPA-Tech GmbH & Co. KG": (0.33, "DE"), "Mapes": (0.67, "SK"),
+    "Maschinenbau Dahme GmbH": (0.33, "DE"), "Maschinenfabrik Ludwig Berger GmbH": (0.33, "AT"),
+    "Mäsovýroba SKURČÁK, s. r. o.": (0.33, "SK"), "Max Blank GmbH": (0.33, "DE"),
+    "maxon motor Hungary Kft": (0.33, "HU"), "MB 'SOLMETO'": (0.33, "LT"),
+    "MBM MECANIQUE": (0.25, "FR"), "MBO Postpress Solutions GmbH": (0.17, "DE"),
+    "MB-TecSolutions GmbH": (0.25, "DE"), "MECASYS s.r.o.": (0.67, "SK"),
+    "Mergon CZ": (0.25, "CZ"), "METAL STEEL INDUSTRY, spol. s r.o.": (0.20, "SK"),
+    "Micro-Epsilon Inspection, s.r.o.": (0.33, "SK"), "MINITUB SLOVAKIA spol. s r.o.": (0.17, "SK"),
+    "Miroslava Bartošová": (0.33, "SK"), "MPM steel s. r. o.": (0.22, "SK"),
+    "Nanogate Slovakia s. r. o.": (0.63, "SK"), "Nela Brüder Neumeister GmbH": (0.33, "DE"),
+    "Nicea s. r. o.": (0.33, "SK"), "NR Craft, s.r.o.": (0.33, "SK"),
+    "NTV - náradie SK s. r. o.": (0.25, "SK"), "OCEANSCAN - Marine Systems & Technology Lda": (0.45, "PT"),
+    "Ondrej Sandtner US ATYP": (0.33, "SK"), "OR - METAL, s. r. o.": (0.67, "SK"),
+    "ORVEX spol. s r.o.": (0.67, "SK"), "PackSys Global AG": (0.32, "SUI"),
+    "Pi-Tech Industrielle Dienstleistungen": (0.25, "DE"), "Pneufit s. r. o.": (0.67, "SK"),
+    "PRAX": (0.75, "FR"), "PROKS PLASTIC s.r.o.": (0.75, "CZ"), "ProMatur": (0.33, "DE"),
+    "PWO Czech Republic a.s.": (0.75, "CZ"), "Quintenz Hybridtechnik GmbH": (0.33, "DE"),
+    "Rapid Technic AG": (0.33, "SUI"), "RECA plastics GmbH": (0.33, "DE"),
+    "Rehnen GmbH & Co KG": (0.17, "DE"), "Rotodecor GmbH": (0.33, "DE"),
+    "RUDOS RUŽOMBEROK, s.r.o.": (0.67, "SK"), "RUETZ TECHNOLOGIES GmbH": (0.33, "DE"),
+    "RWT GmbH": (0.33, "DE"), "SAG Innovations GmbH": (0.20, "AT"),
+    "SAS CONSTRUCTION INSTALLATION ELECTRIQL": (0.67, "FR"), "Schaeffler Skalica, spol. s r.o.": (0.06, "SK"),
+    "Schiller Automation GmbH & Co. KG": (0.33, "DE"), "SCHOCK GmbH": (0.33, "DE"),
+    "SEC Technologies, s.r.o.": (0.80, "SK"), "seele pilsen s.r.o.": (0.29, "CZ"),
+    "Seolutions, s. r. o.": (0.20, "SK"), "SEZ DK a. s.": (0.75, "SK"),
+    "Silkroad Truckparts": (0.33, "LT"), "SITEC GmbH Sicherheitstechnik": (0.20, "DE"),
+    "SKM GmbH": (0.33, "DE"), "SLER Plastic s.r.o.": (0.17, "SK"),
+    "Slovak Techno Export - Plastymat s.r.o.": (0.25, "SK"), "SLUŽBA NITRA, s.r.o.": (0.44, "SK"),
+    "SN Maschinenbau": (0.33, "DE"), "Specac Ltd.": (0.33, "GB"), "Städtler + Beck GmbH": (0.33, "DE"),
+    "Stahlotec GmbH": (0.25, "DE"), "Stieber GmbH": (0.33, "DE"), "SUG GmbH & Co. KG": (0.33, "DE"),
+    "SUMITOMO (SHI) CYCLO DRIVE GERMANY GmbH": (0.33, "DE"), "Taplast, s.r.o.": (0.67, "SK"),
+    "THERMOPLASTIK s.r.o.": (0.29, "SK"), "Thomas GmbH": (0.20, "DE"), "THYZONA s.r.o.": (0.33, "SK"),
+    "TOPSOLID CZECH, s.r.o.": (0.67, "CZ"), "Tousek Ges.m.b.H": (0.25, "AT"),
+    "UPT, s.r.o.": (0.25, "SK"), "Veeser Plastic Slovakia k. s.": (0.25, "SK"),
+    "VENIO, s.r.o.": (0.33, "SK"), "Visteon Electronics Slovakia s. r. o.": (0.57, "SK"),
+    "Vladimír Tarci - PRIMASPOJ": (0.33, "SK"), "W. Hartmann & Co (GmbH & Co KG)": (0.33, "DE"),
+    "WEGU SLOVAKIA s.r.o.": (0.33, "SK"), "Wildkart Deutschland AG & Co.KG": (0.17, "DE"),
+    "Witzenmann Slovakia spol. s r. o.": (0.17, "SK"), "Yanfeng International Automotive Technology Slovakia s.r.o.": (0.75, "SK"),
+    "Yanfeng Namestovo": (0.82, "SK"), "Železiarstvo Páleník s.r.o.": (0.33, "SK"), "ZKW Slovakia s.r.o.": (0.44, "SK")
+}
+
+# --- 4. KOMPLETNÁ DATABÁZA MATERIÁLOV (AKOSTI A HUSTOTY) ---
+db_materialy = {
+    "OCEĽ": {
+        "1.6580": 7900.0, "1.0037": 7900.0, "1.0038": 7900.0, "1.0039": 7900.0, "1.0044": 7900.0,
+        "1.0045": 7900.0, "1.0117": 7900.0, "1.0308": 7900.0, "1.0425": 7900.0, "1.0460": 7900.0,
+        "1.0503": 7900.0, "1.0570": 7900.0, "1.0576": 7900.0, "1.0577": 7900.0, "1.0710": 7900.0,
+        "1.0715": 7900.0, "1.0718": 7900.0, "1.0762": 7900.0, "1.1141": 7900.0, "1.1191": 7900.0,
+        "1.1213": 7900.0, "1.2343": 7900.0, "1.2367": 7900.0, "1.2379": 7900.0, "1.2510": 7900.0,
+        "1.2738": 7900.0, "1.2842": 7900.0, "1.3243": 7900.0, "1.3247": 7900.0, "1.3343": 7900.0,
+        "1.3505": 7900.0, "1.4571": 7900.0, "1.5060": 7900.0, "1.6323": 7900.0, "1.6773": 7900.0,
+        "1.7131": 7900.0, "1.7225": 7900.0, "1.7227": 7900.0, "1.8515": 7900.0, "TOOLOX44": 7900.0
+    },
+    "NEREZ": {
+        "1.4435": 8000.0, "1.4005": 8000.0, "1.4021": 8000.0, "1.4034": 8000.0, "1.4057": 8000.0,
+        "1.4104": 8000.0, "1.4112": 8000.0, "1.4125": 8000.0, "1.4301": 8000.0, "1.4305": 8000.0,
+        "1.4306": 8000.0, "1.4307": 8000.0, "1.4401": 8000.0, "1.4404": 8000.0, "1.4405": 8000.0,
+        "1.4410": 8000.0, "1.4418": 8000.0, "1.4462": 8000.0, "1.4571": 8000.0, "1.5752": 8000.0
+    },
+    "PLAST": {
+        "PA": 1200.0, "PC": 1500.0, "PEEK": 1400.0, "PE-HD": 1000.0, "PET-G": 1700.0,
+        "PE-UHMW": 1000.0, "POM": 1500.0, "PP": 1000.0, "PVC": 1700.0
+    },
+    "FAREBNÉ KOVY": {
+        "2.0371": 9000.0, "2.0401": 9000.0, "2.0402": 9000.0, "2.0975": 9000.0, 
+        "2.1020": 9000.0, "2.1285": 9000.0, "2.5083": 2900.0, "3.1255": 2900.0, 
+        "3.1325": 2900.0, "3.1355": 2900.0, "3.1645": 2900.0, "3.215": 2900.0, 
+        "3.2315": 2900.0, "3.3206": 2900.0, "3.3207": 2900.0, "3.3211": 2900.0, 
+        "3.3547": 2900.0, "3.4365": 2900.0, "3.5312": 4500.0
+    }
+}
+
+# --- 5. POMOCNÉ FUNKCIE ---
 def ulozit_do_gsheets(riadok_dict):
     try:
         df_existujuce = conn.read(spreadsheet=URL_TABULKY)
         novy_df = pd.DataFrame([riadok_dict])
         aktualizovane_df = pd.concat([df_existujuce, novy_df], ignore_index=True)
         conn.update(spreadsheet=URL_TABULKY, data=aktualizovane_df)
-        return True
     except Exception as e:
-        st.error(f"Chyba pri zápise do Google Sheets: {e}")
-        return False
+        st.error(f"Nepodarilo sa uložiť dáta do Google Tabuľky: {e}")
 
 def generovat_pdf(firma, polozky, celkova_suma, cislo_cp):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", "B", 16)
     pdf.cell(0, 10, "CENOVÁ PONUKA - MECASYS", ln=True, align="C")
-    pdf.ln(5)
-    pdf.set_font("Arial", "", 10)
-    pdf.cell(0, 7, f"Číslo CP: {cislo_cp}", ln=True)
-    pdf.cell(0, 7, f"Zákazník: {firma}", ln=True)
-    pdf.cell(0, 7, f"Dátum: {datetime.now().strftime('%d.%m.%Y')}", ln=True)
     pdf.ln(10)
-    
-    # Tabuľka
-    pdf.set_fill_color(240, 240, 240)
-    pdf.set_font("Arial", "B", 9)
-    pdf.cell(10, 10, "ID", 1, 0, "C", True)
-    pdf.cell(80, 10, "Položka (Názov/Kód)", 1, 0, "C", True)
-    pdf.cell(15, 10, "Ks", 1, 0, "C", True)
-    pdf.cell(40, 10, "Jedn. cena", 1, 0, "C", True)
-    pdf.cell(40, 10, "Spolu", 1, 1, "C", True)
-
-    pdf.set_font("Arial", "", 9)
+    pdf.set_font("Arial", "", 10)
+    pdf.cell(0, 7, f"Zákazník: {firma}", ln=True)
+    pdf.cell(0, 7, f"Číslo CP: {cislo_cp}", ln=True)
+    pdf.ln(10)
     for p in polozky:
-        pdf.cell(10, 10, str(p["ID"]), 1, 0, "C")
-        pdf.cell(80, 10, str(p["Položka"]), 1)
-        pdf.cell(15, 10, str(p["Ks"]), 1, 0, "C")
-        pdf.cell(40, 10, f"{p['Cena_ks']:.2f} EUR", 1, 0, "R")
-        pdf.cell(40, 10, f"{p['Spolu']:.2f} EUR", 1, 1, "R")
-
-    pdf.ln(5)
-    pdf.set_font("Arial", "B", 11)
-    pdf.cell(145, 10, "CELKOM BEZ DPH:", 0, 0, "R")
-    pdf.cell(40, 10, f"{celkova_suma:.2f} EUR", 1, 1, "R")
+        pdf.cell(0, 8, f"{p['Položka']} | {p['Ks']} ks | {p['Cena_ks']:.2f} EUR/ks | Spolu: {p['Spolu']:.2f} EUR", ln=True)
+    pdf.ln(10)
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(0, 10, f"CELKOM BEZ DPH: {celkova_suma:.2f} EUR", ln=True, align="R")
     return pdf.output(dest='S').encode('latin-1', errors='replace')
 
-# --- 4. DATABÁZY (ZÁKAZNÍCI A MATERIÁLY) ---
-db_zakaznici = {
-    "A2B, s.r.o.": (0.83, "SK"), "Adient Seating Slovakia s.r.o.": (0.88, "SK"), "AHP Hydraulika, a.s.": (0.64, "SK"), "Aiseco s.r.o.": (0.50, "SK"),
-    "AitS, s.r.o.": (0.55, "SK"), "Aj Metal Design s.r.o.": (0.72, "SK"), "A-J-S, s.r.o.": (0.67, "SK"), "ALBIXON a.s.": (0.45, "CZ"),
-    "ALM-MONT s.r.o.": (0.40, "SK"), "ALUMAL s.r.o.": (0.60, "SK"), "Am-Slovakia, s.r.o.": (0.48, "SK"), "Andritz Kufferath s.r.o.": (0.80, "SK"),
-    "Apon s.r.o.": (0.50, "SK"), "ArcelorMittal Tailored Blanks": (0.90, "SK"), "Arisat s.r.o.": (0.40, "SK"), "Arlamat s.r.o.": (0.55, "SK"),
-    "AS-MONT s.r.o.": (0.65, "SK"), "B-A-R s.r.o.": (0.40, "SK"), "Bauer Gear Motor s.r.o.": (0.85, "SK"), "B-E-S-T s.r.o.": (0.40, "SK"),
-    "Bevele s.r.o.": (0.60, "SK"), "BKL s.r.o.": (0.45, "SK"), "BMT Medical Technology s.r.o.": (0.75, "CZ"), "Boge Elastmetall Slovakia": (0.88, "SK"),
-    "Bopel s.r.o.": (0.55, "SK"), "B-P-M s.r.o.": (0.40, "SK"), "Bratislavské tlačiarne a.s.": (0.60, "SK"), "Bross s.r.o.": (0.45, "SK"),
-    "Brückner Slovakia, s.r.o.": (0.75, "SK"), "B-S-M s.r.o.": (0.40, "SK"), "C.E.P. s.r.o.": (0.65, "SK"), "C-H-E-M s.r.o.": (0.40, "SK"),
-    "Cinemat s.r.o.": (0.45, "SK"), "Continental Matador Rubber": (0.92, "SK"), "C-P-S s.r.o.": (0.40, "SK"), "CS-Beta s.r.o.": (0.55, "SK"),
-    "C-S-M s.r.o.": (0.40, "SK"), "CTS Corporation s.r.o.": (0.80, "SK"), "D-A-M s.r.o.": (0.40, "SK"), "Danfoss Power Solutions": (0.95, "SK"),
-    "D-E-S s.r.o.": (0.40, "SK"), "Deufol Slovensko s.r.o.": (0.70, "SK"), "D-M-S s.r.o.": (0.40, "SK"), "Donauchem s.r.o.": (0.60, "SK"),
-    "D-P-S s.r.o.": (0.40, "SK"), "D-S-M s.r.o.": (0.40, "SK"), "D-T-S s.r.o.": (0.40, "SK"), "Duna s.r.o.": (0.55, "SK"),
-    "E-A-S s.r.o.": (0.40, "SK"), "Eberspächer spol. s r.o.": (0.82, "SK"), "Ed. Haas SK s.r.o.": (0.65, "SK"), "E-D-S s.r.o.": (0.40, "SK"),
-    "E-M-S s.r.o.": (0.40, "SK"), "Embraco Slovakia s.r.o.": (0.90, "SK"), "E-P-S s.r.o.": (0.40, "SK"), "E-S-M s.r.o.": (0.40, "SK"),
-    "Evonik Fermas s.r.o.": (0.85, "SK"), "E-X-S s.r.o.": (0.40, "SK"), "F-A-M s.r.o.": (0.40, "SK"), "Faurecia Slovakia s.r.o.": (0.88, "SK"),
-    "F-E-S s.r.o.": (0.40, "SK"), "Festo s.r.o.": (0.85, "SK"), "F-M-S s.r.o.": (0.40, "SK"), "FM-Slovenská s.r.o.": (0.60, "SK"),
-    "F-P-S s.r.o.": (0.40, "SK"), "Franke Slovakia s.r.o.": (0.80, "SK"), "F-S-M s.r.o.": (0.40, "SK"), "G-A-M s.r.o.": (0.40, "SK"),
-    "Gedia Slovakia s.r.o.": (0.82, "SK"), "G-E-S s.r.o.": (0.40, "SK"), "G-M-S s.r.o.": (0.40, "SK"), "G-P-S s.r.o.": (0.40, "SK"),
-    "G-S-M s.r.o.": (0.40, "SK"), "H-A-M s.r.o.": (0.40, "SK"), "Hanon Systems Slovakia": (0.85, "SK"), "H-E-S s.r.o.": (0.40, "SK"),
-    "Hella Slovakia Lighting": (0.90, "SK"), "H-M-S s.r.o.": (0.40, "SK"), "Honeywell s.r.o.": (0.92, "SK"), "H-P-S s.r.o.": (0.40, "SK"),
-    "H-S-M s.r.o.": (0.40, "SK"), "I-A-M s.r.o.": (0.40, "SK"), "Ideal Automotive Slovakia": (0.75, "SK"), "I-E-S s.r.o.": (0.40, "SK"),
-    "I-M-S s.r.o.": (0.40, "SK"), "Inalfa Roof Systems": (0.80, "SK"), "I-P-S s.r.o.": (0.40, "SK"), "I-S-M s.r.o.": (0.40, "SK"),
-    "J-A-M s.r.o.": (0.40, "SK"), "Jacobs Douwe Egberts": (0.85, "SK"), "J-E-S s.r.o.": (0.40, "SK"), "Johnson Controls Lučenec": (0.80, "SK"),
-    "J-M-S s.r.o.": (0.40, "SK"), "J-P-S s.r.o.": (0.40, "SK"), "J-S-M s.r.o.": (0.40, "SK"), "K-A-M s.r.o.": (0.40, "SK"),
-    "K-E-S s.r.o.": (0.40, "SK"), "Kia Slovakia s.r.o.": (0.98, "SK"), "K-M-S s.r.o.": (0.40, "SK"), "Knauf Insulation s.r.o.": (0.80, "SK"),
-    "K-P-S s.r.o.": (0.40, "SK"), "Kromberg & Schubert": (0.75, "SK"), "K-S-M s.r.o.": (0.40, "SK"), "L-A-M s.r.o.": (0.40, "SK"),
-    "Lear Corporation Slovakia": (0.82, "SK"), "L-E-S s.r.o.": (0.40, "SK"), "L-M-S s.r.o.": (0.40, "SK"), "L-P-S s.r.o.": (0.40, "SK"),
-    "L-S-M s.r.o.": (0.40, "SK"), "M-A-M s.r.o.": (0.40, "SK"), "Magna Slovteca s.r.o.": (0.85, "SK"), "Magneti Marelli Slovakia": (0.88, "SK"),
-    "Mahle Behr Slovakia s.r.o.": (0.82, "SK"), "Matador Automotive": (0.80, "SK"), "MECASYS s.r.o.": (0.67, "SK"), "M-E-S s.r.o.": (0.40, "SK"),
-    "METS s.r.o.": (0.55, "SK"), "M-M-S s.r.o.": (0.40, "SK"), "Mobis Slovakia s.r.o.": (0.92, "SK"), "M-P-S s.r.o.": (0.40, "SK"),
-    "M-S-M s.r.o.": (0.40, "SK"), "N-A-M s.r.o.": (0.40, "SK"), "N-E-S s.r.o.": (0.40, "SK"), "N-M-S s.r.o.": (0.40, "SK"),
-    "N-P-S s.r.o.": (0.40, "SK"), "N-S-M s.r.o.": (0.40, "SK"), "O-A-M s.r.o.": (0.40, "SK"), "O-E-S s.r.o.": (0.40, "SK"),
-    "O-M-S s.r.o.": (0.40, "SK"), "O-P-S s.r.o.": (0.40, "SK"), "O-S-M s.r.o.": (0.40, "SK"), "P-A-M s.r.o.": (0.40, "SK"),
-    "Panasonic Automotive": (0.85, "SK"), "P-E-S s.r.o.": (0.40, "SK"), "P-M-S s.r.o.": (0.40, "SK"), "P-P-S s.r.o.": (0.40, "SK"),
-    "P-S-M s.r.o.": (0.40, "SK"), "R-A-M s.r.o.": (0.40, "SK"), "R-E-S s.r.o.": (0.40, "SK"), "R-M-S s.r.o.": (0.40, "SK"),
-    "R-P-S s.r.o.": (0.40, "SK"), "R-S-M s.r.o.": (0.40, "SK"), "S-A-M s.r.o.": (0.40, "SK"), "Samsung Electronics": (0.95, "SK"),
-    "S-E-S s.r.o.": (0.40, "SK"), "S-M-S s.r.o.": (0.40, "SK"), "S-P-S s.r.o.": (0.40, "SK"), "S-S-M s.r.o.": (0.40, "SK"),
-    "T-A-M s.r.o.": (0.40, "SK"), "T-E-S s.r.o.": (0.40, "SK"), "T-M-S s.r.o.": (0.40, "SK"), "T-P-S s.r.o.": (0.40, "SK"),
-    "T-S-M s.r.o.": (0.40, "SK"), "U-A-M s.r.o.": (0.40, "SK"), "U-E-S s.r.o.": (0.40, "SK"), "U-M-S s.r.o.": (0.40, "SK"),
-    "U-P-S s.r.o.": (0.40, "SK"), "U-S-M s.r.o.": (0.40, "SK"), "V-A-M s.r.o.": (0.40, "SK"), "Volkswagen Slovakia": (0.99, "SK"),
-    "V-E-S s.r.o.": (0.40, "SK"), "V-M-S s.r.o.": (0.40, "SK"), "V-P-S s.r.o.": (0.40, "SK"), "V-S-M s.r.o.": (0.40, "SK"),
-    "W-A-M s.r.o.": (0.40, "SK"), "W-E-S s.r.o.": (0.40, "SK"), "W-M-S s.r.o.": (0.40, "SK"), "W-P-S s.r.o.": (0.40, "SK"),
-    "W-S-M s.r.o.": (0.40, "SK"), "Yanfeng Namestovo": (0.82, "SK"), "ZKW Slovakia s.r.o.": (0.44, "SK"), "Z-M-S s.r.o.": (0.40, "SK")
-}
-
-db_plasty = {"PA": 1200.0, "PC": 1500.0, "PEEK": 1400.0, "POM": 1500.0, "PP": 1000.0, "PVC": 1400.0, "PMMA": 1180.0}
-
-# --- 5. UI ---
-st.title("⚙️ MECASYS - Systém pre Cenové Ponuky")
+# --- 6. UI APLIKÁCIE ---
+st.title("⚙️ MECASYS - Master CP Generátor")
 
 with st.sidebar:
     st.header("Zákazník a CP")
-    vyber_firmy = st.selectbox("Vyberte firmu:", sorted(db_zakaznici.keys()))
-    lojalita, krajina = db_zakaznici[vyber_firmy]
-    cislo_cp = st.text_input("Číslo CP:", value=f"{datetime.now().year}-0001_MEC")
-    st.info(f"Firma: {vyber_firmy}\nKrajina: {krajina}\nLojalita: {lojalita}")
-
-st.subheader("Pridanie novej položky")
-c1, c2, c3 = st.columns(3)
-
-with c1:
-    polozka = st.text_input("Názov/Kód dielu (Položka):")
-    n = st.number_input("Kusy (n):", min_value=1, value=10)
-    narocnost = st.selectbox("Náročnosť výroby (1-5):", ["1", "2", "3", "4", "5"], index=2)
-with c2:
-    cas = st.number_input("Čas výroby (hod/ks):", min_value=0.0, format="%.3f", value=0.100)
-    mat_kat = st.selectbox("Kategória materiálu:", ["OCEĽ", "NEREZ", "FAREBNÉ KOVY", "PLAST"])
-    if mat_kat == "PLAST":
-        akost = st.selectbox("Akosť plastu:", sorted(db_plasty.keys()))
-        hustota = db_plasty[akost]
-    elif mat_kat == "FAREBNÉ KOVY":
-        akost = st.selectbox("Materiál:", ["Hliník (3.1645)", "Titan Gr.5", "Mosadz (2.0401)"])
-        hustota = 2700.0 if "Hliník" in akost else (4500.0 if "Titan" in akost else 8500.0)
+    # Dynamicky zoradený zoznam firiem
+    zoznam_firiem = ["--- NOVÝ ZÁKAZNÍK ---"] + sorted(db_zakaznici.keys())
+    vyber_firmy = st.selectbox("Vyberte firmu:", zoznam_firiem)
+    
+    if vyber_firmy == "--- NOVÝ ZÁKAZNÍK ---":
+        finalny_zakaznik = st.text_input("Názov novej firmy:")
+        krajina, lojalita = "SK", 0.50
     else:
-        akost = st.text_input("Akosť (napr. 1.4301):", value="1.0037")
-        hustota = 7850.0 if "OCEĽ" in mat_kat else 7950.0
+        finalny_zakaznik = vyber_firmy
+        lojalita, krajina = db_zakaznici[vyber_firmy]
+        st.info(f"Firma: {finalny_zakaznik}\nKrajina: {krajina}\nLojalita: {lojalita}")
+    
+    cislo_cp = st.text_input("Číslo CP:", value=f"{datetime.now().year}-0001_MEC")
+
+st.subheader("Parametre komponentu")
+c1, c2, c3 = st.columns(3)
+with c1:
+    polozka = st.text_input("Názov / Kód dielu:")
+    n = st.number_input("Počet kusov (n):", min_value=1, value=1)
+    narocnost = st.selectbox("Náročnosť (1-5):", ["1", "2", "3", "4", "5"], index=2)
+with c2:
+    cas = st.number_input("Čas výroby (hod/ks):", min_value=0.001, format="%.3f", value=0.100)
+    mat_kat = st.selectbox("Kategória materiálu:", list(db_materialy.keys()))
+    akost = st.selectbox("Akosť materiálu:", list(db_materialy[mat_kat].keys()))
+    hustota = db_materialy[mat_kat][akost]
+    st.caption(f"Hustota: {hustota} kg/m³")
 with c3:
-    tvar = st.selectbox("Tvar polotovaru:", ["KR", "STV"])
-    D = st.number_input("Rozmer D / Šírka (mm):", min_value=0.1, value=20.0)
-    L = st.number_input("Rozmer L (mm):", min_value=0.1, value=50.0)
-    cena_kg = st.number_input("Cena mat/kg (€):", min_value=0.0, value=2.5)
+    tvar = st.selectbox("Tvar polotovaru:", ["KR (Kruh)", "STV (Štvorec)"])
+    D = st.number_input("Rozmer D (mm):", value=20.0)
+    L = st.number_input("Dĺžka L (mm):", value=50.0)
+    cena_komp = st.number_input("Cena materiálu na komponent (€):", value=5.00)
+    ko_cena_ks = st.number_input("Kooperácia (€/ks):", value=0.00)
 
 if st.button("➕ PRIDAŤ DO KOŠÍKA"):
-    if tvar == "KR":
+    # Výpočet teoretickej hmotnosti
+    if "KR" in tvar:
         vaha = (np.pi * (D**2) * L * hustota) / 4000000000
     else:
         vaha = (D * D * L * hustota) / 1000000000
-    
+        
     st.session_state['kosik'].append({
         "Položka": polozka, "Kusy (n)": n, "Čas výroby (hod/ks)": cas, "Náročnosť": narocnost,
-        "Kategória mat.": mat_kat, "Akosť": akost, "Tvar": tvar, "Rozmer D": D, "Rozmer L": L,
-        "Hustota": hustota, "Hmotnosť 1ks": vaha, "Cena mat/kg": cena_kg, "Kooperácia": 0.0
+        "Kategória mat.": mat_kat, "Akosť": akost, "Tvar": "KR" if "KR" in tvar else "STV", 
+        "Rozmer D": D, "Rozmer L": L, "Hustota": hustota, "Hmotnosť 1ks": vaha, 
+        "Cena_material_predpoklad": cena_komp, "ko_cena_ks": ko_cena_ks
     })
-    st.success("Položka pridaná!")
+    st.success(f"Diel {polozka} bol pridaný.")
 
-# --- 6. SPRACOVANIE A EXPORT ---
+# --- 7. KOŠÍK A FINÁLNY VÝPOČET ---
 if st.session_state['kosik']:
     st.divider()
-    df_kosik = pd.DataFrame(st.session_state['kosik'])
-    st.dataframe(df_kosik[["Položka", "Kusy (n)", "Akosť", "Hmotnosť 1ks"]])
-    
+    df_prehlad = pd.DataFrame(st.session_state['kosik'])
+    st.write("### Aktuálny košík")
+    st.dataframe(df_prehlad[["Položka", "Kusy (n)", "Akosť", "Hmotnosť 1ks", "Cena_material_predpoklad"]])
+
     if st.button("🏁 GENEROVAŤ A ULOŽIŤ PONUKU", type="primary"):
         celkovy_objem = sum(i['Kusy (n)'] for i in st.session_state['kosik'])
-        polozky_pdf = []
-        suma_cp = 0
+        polozky_pdf, suma_cp = [], 0
         
-        for idx, p in enumerate(st.session_state['kosik'], start=1):
-            # Simulácia modelu (v app.py nahradiť skutočným model.predict ak je pkcls funkčný)
-            # Tu sa používa vstupný formát pre Orange
-            j_cena = (p["Čas výroby (hod/ks)"] * 45) + (p["Hmotnosť 1ks"] * p["Cena_mat/kg"] * 1.2)
+        for p in st.session_state['kosik']:
             if model:
                 try:
                     vstup = pd.DataFrame([{
                         "CP_objem": celkovy_objem, "n_komponent": p["Kusy (n)"],
-                        "cas_v_predpoklad_komponent (hod)": p["Čas výroby (hod/ks)"], "v_narocnost": p["Náročnosť"],
-                        "zakaznik_lojalita": lojalita, "zakaznik_krajina": krajina,
-                        "hmotnost": p["Hmotnosť 1ks"], "cena_material_predpoklad": p["Cena mat/kg"],
-                        "material_nazov": p["Kategória mat."], "tvar_polotovaru": p["Tvar"],
-                        "D(mm)": p["Rozmer D"], "L(mm)": p["Rozmer L"], "material_HUSTOTA": p["Hustota"], "material_AKOST": p["Akosť"]
+                        "cas_v_predpoklad_komponent (hod)": p["Čas výroby (hod/ks)"],
+                        "v_narocnost": p["Náročnosť"], "zakaznik_lojalita": lojalita, "zakaznik_krajina": krajina,
+                        "hmotnost": p["Hmotnosť 1ks"], "cena_material_predpoklad": p["Cena_material_predpoklad"], 
+                        "ko_cena_ks": p["ko_cena_ks"], "material_nazov": p["Kategória mat."],
+                        "tvar_polotovaru": p["Tvar"], "D(mm)": p["Rozmer D"], "L(mm)": p["Rozmer L"],
+                        "material_HUSTOTA": p["Hustota"], "material_AKOST": p["Akosť"]
                     }])
                     j_cena = float(model.predict(vstup)[0])
                 except:
-                    pass
+                    # Záložný výpočet ak model zlyhá
+                    j_cena = (p["Čas výroby (hod/ks)"] * 45) + p["Cena_material_predpoklad"] + p["ko_cena_ks"]
+            else:
+                j_cena = (p["Čas výroby (hod/ks)"] * 45) + p["Cena_material_predpoklad"] + p["ko_cena_ks"]
             
             c_cena = j_cena * p["Kusy (n)"]
             suma_cp += c_cena
+            polozky_pdf.append({"Položka": p["Položka"], "Ks": p["Kusy (n)"], "Cena_ks": j_cena, "Spolu": c_cena})
             
-            # Zápis do Sheets
-            riadok = {
-                "Čas zápisu": datetime.now().strftime("%d.%m.%Y %H:%M"), "Číslo CP": cislo_cp,
-                "Zákazník": vyber_firmy, "Krajina": krajina, "Lojalita": lojalita,
-                "ID_komponent": idx, "Položka": p["Položka"], "Kusy (n)": p["Kusy (n)"],
-                "Celkový objem (CP_objem)": celkovy_objem, "Čas výroby (hod/ks)": p["Čas výroby (hod/ks)"],
-                "Náročnosť": p["Náročnosť"], "Kategória mat.": p["Kategória mat."], "Akosť": p["Akosť"],
-                "Tvar": p["Tvar"], "Rozmer D": p["Rozmer D"], "Rozmer L": p["Rozmer L"],
-                "Hustota": p["Hustota"], "Hmotnosť 1ks": p["Hmotnosť 1ks"], "Cena mat/kg": p["Cena mat/kg"],
-                "Kooperácia": p["Kooperácia"], "Jednotková cena (€)": round(j_cena, 2), "Celková suma (€)": round(c_cena, 2)
-            }
-            ulozit_do_gsheets(riadok)
-            polozky_pdf.append({"ID": idx, "Položka": p["Položka"], "Ks": p["Kusy (n)"], "Cena_ks": j_cena, "Spolu": c_cena})
-            
-        st.balloons()
-        pdf_data = generovat_pdf(vyber_firmy, polozky_pdf, suma_cp, cislo_cp)
-        st.download_button("📥 STIAHNUŤ PDF PONUKU", data=pdf_data, file_name=f"CP_{cislo_cp}.pdf", mime="application/pdf")
+            # Zápis do cloudu
+            ulozit_do_gsheets({
+                "Dátum": datetime.now().strftime("%d.%m.%Y %H:%M"), "Číslo CP": cislo_cp,
+                "Zákazník": finalny_zakaznik, "Položka": p["Položka"], "Ks": p["Kusy (n)"],
+                "Jednotková cena": round(j_cena, 2), "Spolu": round(c_cena, 2)
+            })
 
-    if st.button("🗑️ Vymazať zoznam"):
+        st.balloons()
+        pdf_raw = generovat_pdf(finalny_zakaznik, polozky_pdf, suma_cp, cislo_cp)
+        st.download_button("📥 STIAHNUŤ PDF PONUKU", data=pdf_raw, file_name=f"CP_{cislo_cp}.pdf", mime="application/pdf")
+
+    if st.button("🗑️ VYMAZAŤ KOŠÍK"):
         st.session_state['kosik'] = []
         st.rerun()
