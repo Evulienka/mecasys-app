@@ -2,5 +2,5 @@ streamlit
 pandas
 numpy
 requests
-scikit-learn
-Orange3
+scikit-learn==1.2.2
+orange3==3.36.2
