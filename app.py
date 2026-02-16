@@ -10,15 +10,16 @@ from datetime import datetime
 try:
     import Orange
 except ImportError:
-    st.error("Knižnica 'orange3' nie je nainštalovaná. Pridajte ju do requirements.txt!")
+    st.error("Inštalujem knižnice (Orange3)... Ak to trvá dlho, urobte Reboot app.")
 
-# --- 2. KONFIGURÁCIA ---
-st.set_page_config(page_title="Mecasys CP Generátor", layout="wide")
+# --- 2. KONFIGURÁCIA STRÁNKY ---
+st.set_page_config(page_title="Mecasys CP Generátor", layout="wide", page_icon="⚙️")
 
+# Inicializácia košíka v pamäti prehliadača
 if 'kosik' not in st.session_state:
     st.session_state['kosik'] = []
 
-# --- 3. FUNKCIA PRE GOOGLE FORM ---
+# --- 3. FUNKCIA PRE ZÁPIS DO GOOGLE FORM ---
 def ulozit_do_google_form(data):
     url = "https://docs.google.com/forms/d/e/1FAIpQLSf92s3nBMz6Oviq6WgNLyid9GmcNgAtQOAuWUVBPt9mcrotzw/formResponse"
     payload = {
@@ -50,7 +51,7 @@ def ulozit_do_google_form(data):
     except:
         pass
 
-# --- 4. DATABÁZY (SKRÁTENÉ PRE TELLO, V KÓDE BUDÚ KOMPLET) ---
+# --- 4. KOMPLETNÁ DATABÁZA ZÁKAZNÍKOV (156 FIRIEM) ---
 db_zakaznici = {
     "A2B, s.r.o.": (0.83, "SK"), "AAH PLASTICS Slovakia s. r. o.": (0.80, "SK"),
     "Adient Innotec Metal Technologies s.r.o.": (0.31, "SK"), "Adient Seating S.A.S.": (0.33, "FR"),
@@ -145,108 +146,152 @@ db_zakaznici = {
     "Yanfeng Namestovo": (0.82, "SK"), "Železiarstvo Páleník s.r.o.": (0.33, "SK"), "ZKW Slovakia s.r.o.": (0.44, "SK")
 }
 
+# --- 5. KOMPLETNÁ DATABÁZA MATERIÁLOV ---
 db_materialy = {
-    "OCEĽ": {"1.6580": 7900, "1.0037": 7900, "1.0503": 7900, "1.1191": 7900, "1.2379": 7900, "1.7225": 7900},
-    "NEREZ": {"1.4301": 8000, "1.4305": 8000, "1.4404": 8000, "1.4571": 8000},
-    "PLAST": {"PA": 1200, "POM": 1500, "PE-HD": 1000, "PVC": 1700},
-    "FAREBNÉ KOVY": {"3.4365": 2800, "2.0401": 8500, "2.5083": 2660}
+    "OCEĽ": {
+        "1.6580": 7900.0, "1.0037": 7900.0, "1.0038": 7900.0, "1.1191": 7900.0,
+        "1.2379": 7900.0, "1.7225": 7900.0, "1.7131": 7900.0, "TOOLOX44": 7900.0
+    },
+    "NEREZ": {
+        "1.4301": 8000.0, "1.4305": 8000.0, "1.4404": 8000.0, "1.4571": 8000.0, "1.4021": 8000.0
+    },
+    "PLAST": {
+        "PA": 1200.0, "POM": 1500.0, "PE-HD": 1000.0, "PVC": 1700.0, "PEEK": 1400.0, "TEFLON": 2200.0
+    },
+    "FAREBNÉ KOVY": {
+        "3.4365": 2800.0, "2.0401": 8500.0, "2.5083": 2660.0, "BRONZ": 8800.0
+    }
 }
 
-# --- 5. NAČÍTANIE ORANGE MODELU ---
+# --- 6. NAČÍTANIE MODELU ---
 @st.cache_resource
 def load_model():
-    path = os.path.join(os.path.dirname(__file__), "model.pkcls")
+    path = "model.pkcls"
     if os.path.exists(path):
         try:
             with open(path, "rb") as f:
                 return pickle.load(f)
         except Exception as e:
-            st.error(f"Chyba pri čítaní modelu: {e}")
+            st.error(f"Chyba pri čítaní modelu: {e}. Skúste Reboot app.")
     return None
 
 model = load_model()
 
-# --- 6. UI ---
+# --- 7. HLAVNÉ ROZHRANIE ---
 st.title("⚙️ MECASYS - Master CP Generátor")
 
 if model is None:
-    st.warning("Čakám na model... Uistite sa, že model.pkcls je nahraný a requirements.txt obsahuje 'orange3'.")
+    st.warning("Čakám na model... Uistite sa, že súbor 'model.pkcls' je v tom istom priečinku ako tento kód.")
     st.stop()
 
+# --- SIDEBAR (ZÁKAZNÍK) ---
 with st.sidebar:
+    st.header("Zákazník a Projekt")
     cp_datum = st.date_input("Dátum ponuky:", datetime.now())
-    vyber_firmy = st.selectbox("Zákazník:", sorted(db_zakaznici.keys()))
+    vyber_firmy = st.selectbox("Vyberte firmu:", sorted(db_zakaznici.keys()))
     lojalita, krajina = db_zakaznici[vyber_firmy]
+    st.info(f"📍 {krajina} | ⭐ Lojalita: {lojalita}")
     cislo_cp = st.text_input("Číslo CP:", value=f"{cp_datum.year}-0001_MEC")
 
+# --- FORMULÁR PRE KOMPONENT ---
 st.subheader("Nový komponent")
 c1, c2, c3 = st.columns(3)
-with c1:
-    polozka = st.text_input("Názov dielu:")
-    n_ks = st.number_input("Počet kusov:", min_value=1, value=1)
-    narocnost = st.slider("Náročnosť (1-5):", 1, 5, 3)
-with c2:
-    cas = st.number_input("Čas (hod/ks):", min_value=0.001, value=0.1, format="%.3f")
-    mat_kat = st.selectbox("Kategória:", list(db_materialy.keys()))
-    akost = st.selectbox("Akosť:", list(db_materialy[mat_kat].keys()))
-with c3:
-    tvar = st.selectbox("Tvar:", ["KR", "STV"])
-    D = st.number_input("Rozmer D (mm):", value=20.0)
-    L = st.number_input("Dĺžka L (mm):", value=50.0)
-    c_mat = st.number_input("Mat. (€/ks):", value=2.0)
-    ko_cena = st.number_input("Kooperácia (€/ks):", value=0.0)
 
-if st.button("➕ PRIDAŤ"):
+with c1:
+    polozka = st.text_input("ID / Názov komponentu:")
+    n_ks = st.number_input("Počet kusov (n):", min_value=1, value=1)
+    narocnost = st.slider("Technická náročnosť (1-5):", 1, 5, 3)
+
+with c2:
+    cas = st.number_input("Čas výroby (hod/ks):", min_value=0.001, value=0.1, format="%.3f")
+    mat_kat = st.selectbox("Kategória materiálu:", list(db_materialy.keys()))
+    akost = st.selectbox("Akosť materiálu:", list(db_materialy[mat_kat].keys()))
     hustota = db_materialy[mat_kat][akost]
-    vaha = (np.pi*(D**2)*L*hustota)/4e9 if tvar=="KR" else (D**2*L*hustota)/1e9
+
+with c3:
+    tvar = st.selectbox("Tvar polotovaru:", ["KR (Kruh)", "STV (Štvorec)"])
+    D = st.number_input("Rozmer D / Šírka (mm):", value=20.0)
+    L = st.number_input("Dĺžka L (mm):", value=50.0)
+    c_mat = st.number_input("Odhad materiálu (€/ks):", value=2.0)
+    ko_cena = st.number_input("Kooperácia / Iné (€/ks):", value=0.0)
+
+if st.button("➕ PRIDAŤ DO KOŠÍKA"):
+    # Výpočet hmotnosti
+    vaha = (np.pi*(D**2)*L*hustota)/4e9 if "KR" in tvar else (D*D*L*hustota)/1e9
     st.session_state.kosik.append({
         "ID": polozka, "n": n_ks, "cas": cas, "nar": narocnost, "kat": mat_kat, "akost": akost,
-        "tvar": tvar, "D": D, "L": L, "vaha": vaha, "c_mat": c_mat, "ko": ko_cena, "hustota": hustota
+        "tvar": "KR" if "KR" in tvar else "STV", "D": D, "L": L, "vaha": vaha, 
+        "c_mat": c_mat, "ko": ko_cena, "hustota": hustota
     })
+    st.success(f"Komponent '{polozka}' bol pridaný.")
 
+# --- 8. KOŠÍK A VÝPOČET ---
 if st.session_state.kosik:
     st.divider()
-    df_kosik = pd.DataFrame(st.session_state.kosik)
-    st.dataframe(df_kosik[["ID", "n", "akost", "vaha"]])
+    st.write("### 🛒 Aktuálne položky v ponuke")
+    df_preview = pd.DataFrame(st.session_state.kosik)
+    st.dataframe(df_preview[["ID", "n", "akost", "vaha", "c_mat"]])
 
-    if st.button("🏁 NACENIŤ A ODOSLAŤ", type="primary"):
+    if st.button("🏁 NACENIŤ AI MODELOM A ODOSLAŤ", type="primary"):
         celkovy_objem = sum(i['n'] for i in st.session_state.kosik)
-        finalne_data = []
+        finalne_tabulka = []
 
         for p in st.session_state.kosik:
-            # Príprava pre Orange Model
+            # Príprava dát pre Orange model (vstupný DataFrame)
             vstup = pd.DataFrame([{
-                "CP_datum": cp_datum.strftime("%Y-%m-%d"), "CP_objem": celkovy_objem,
-                "n_komponent": p["n"], "cas_v_predpoklad_komponent (hod)": p["cas"],
-                "v_narocnost": p["nar"], "zakaznik_lojalita": lojalita, "zakaznik_krajina": krajina,
-                "hmotnost": p["vaha"], "cena_material_predpoklad": p["c_mat"],
-                "ko_cena_ks": p["ko"], "material_nazov": p["kat"], "tvar_polotovaru": p["tvar"],
-                "D(mm)": p["D"], "L(mm)": p["L"], "material_HUSTOTA": p["hustota"], "material_AKOST": p["akost"]
+                "CP_datum": cp_datum.strftime("%Y-%m-%d"),
+                "CP_objem": celkovy_objem,
+                "n_komponent": p["n"],
+                "cas_v_predpoklad_komponent (hod)": p["cas"],
+                "v_narocnost": p["nar"],
+                "zakaznik_lojalita": lojalita,
+                "zakaznik_krajina": krajina,
+                "hmotnost": p["vaha"],
+                "cena_material_predpoklad": p["c_mat"],
+                "ko_cena_ks": p["ko"],
+                "material_nazov": p["kat"],
+                "tvar_polotovaru": p["tvar"],
+                "D(mm)": p["D"],
+                "L(mm)": p["L"],
+                "material_HUSTOTA": p["hustota"],
+                "material_AKOST": p["akost"]
             }])
             
-            # PREDPOVEĎ (Špeciálne pre Orange)
+            # PREDPOVEĎ CENY
             try:
-                # Skúsime klasický predict, ak nie, skúsime Orange volanie
-                predikcia = model(vstup) if callable(model) else model.predict(vstup)
+                # Orange modely niekedy vyžadujú volanie cez .predict() alebo priamo ()
+                if hasattr(model, 'predict'):
+                    predikcia = model.predict(vstup)
+                else:
+                    predikcia = model(vstup)
+                
                 j_cena = float(predikcia[0])
-            except:
+            except Exception as e:
+                st.error(f"Chyba výpočtu pri diely {p['ID']}: {e}")
                 j_cena = 0.0
             
-            c_suma = j_cena * p["n"]
-            finalne_data.append({"Diel": p["ID"], "Ks": p["n"], "Jednotková": f"{j_cena:.2f} €", "Celkom": f"{c_suma:.2f} €"})
-            
-            # Logovanie
+            c_spolu = j_cena * p["n"]
+            finalne_tabulka.append({"Diel": p["ID"], "Ks": p["n"], "Jedn. cena": f"{j_cena:.2f} €", "Celkom": f"{c_spolu:.2f} €"})
+
+            # Logovanie do Google Form
             ulozit_do_google_form({
-                "cas_zapisu": datetime.now().strftime("%d.%m.%Y %H:%M:%S"), "cp_cislo": cislo_cp,
-                "zakaznik": vyber_firmy, "krajina": krajina, "lojalita": str(lojalita),
-                "id_komponent": p["ID"], "polozka": p["ID"], "kusy": str(p["n"]),
-                "cp_objem": str(celkovy_objem), "cas_vyroby": str(p["cas"]),
-                "narocnost": str(p["nar"]), "kat_mat": p["kat"], "akost": p["akost"],
-                "tvar": p["tvar"], "rozmer_d": str(p["D"]), "rozmer_l": str(p["L"]),
-                "hustota": str(p["hustota"]), "vaha": f"{p['vaha']:.4f}",
-                "cena_mat_kg": f"{p['c_mat']:.2f}", "kooperacia": f"{p['ko']:.2f}",
-                "jednotkova_cena": f"{j_cena:.2f}", "celkova_suma": f"{c_suma:.2f}"
+                "cas_zapisu": datetime.now().strftime("%d.%m.%Y %H:%M:%S"),
+                "cp_cislo": cislo_cp, "zakaznik": vyber_firmy, "krajina": krajina,
+                "lojalita": str(lojalita), "id_komponent": p["ID"], "polozka": p["ID"],
+                "kusy": str(p["n"]), "cp_objem": str(celkovy_objem),
+                "cas_vyroby": str(p["cas"]), "narocnost": str(p["nar"]),
+                "kat_mat": p["kat"], "akost": p["akost"], "tvar": p["tvar"],
+                "rozmer_d": str(p["D"]), "rozmer_l": str(p["L"]), "hustota": str(p["hustota"]),
+                "vaha": f"{p['vaha']:.4f}", "cena_mat_kg": f"{p['c_mat']:.2f}",
+                "kooperacia": f"{p['ko']:.2f}", "jednotkova_cena": f"{j_cena:.2f}",
+                "celkova_suma": f"{c_spolu:.2f}"
             })
 
-        st.table(pd.DataFrame(finalne_data))
+        st.divider()
+        st.subheader("📊 Výsledná kalkulácia")
+        st.table(pd.DataFrame(finalne_tabulka))
         st.balloons()
+
+    if st.button("🗑️ VYMAZAŤ KOŠÍK"):
+        st.session_state.kosik = []
+        st.rerun()
