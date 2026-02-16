@@ -1,25 +1,27 @@
 import os
 import sys
 
-# --- 1. OPRAVA PRE NUMPY A ORANGE ---
-# Musí byť pred importom Orange, aby sme predišli chybe multiarray
+# --- 1. SILNÁ OPRAVA KOMPATIBILITY (MUST BE FIRST) ---
 try:
-    import numpy as np
-except ImportError:
-    pass
-
-try:
+    # Vynútenie načítania pkg_resources zo setuptools
     import setuptools
     import pkg_resources
 except ImportError:
-    pass
+    # Ak zlyhá, skúsime to cez interný pip (posledná záchrana)
+    try:
+        from pip._vendor import pkg_resources
+        sys.modules['pkg_resources'] = pkg_resources
+    except:
+        pass
 
-# Zakázanie GUI pre server
+# Zabránenie konfliktom s numpy verziou
+os.environ['NPY_DISABLE_CPU_FEATURES'] = '1'
 os.environ['QT_QPA_PLATFORM'] = 'offscreen'
 
 import streamlit as st
 import pickle
 import pandas as pd
+import numpy as np
 from datetime import datetime
 
 # --- 2. NAČÍTANIE MODELU ---
@@ -28,7 +30,7 @@ def load_model():
     model_path = "model.pkcls"
     if os.path.exists(model_path):
         try:
-            # Import Orange až vo vnútri funkcie
+            # Import Orange až TU, keď už sú pkg_resources ošetrené
             import Orange
             with open(model_path, "rb") as f:
                 return pickle.load(f)
@@ -60,7 +62,9 @@ def predpovedaj_cenu(diel, celkovy_objem, lojalita, krajina):
         "material_AKOST": str(diel["akost"])
     }])
     try:
-        return float(model(vstup)[0])
+        # Použitie modelu ako funkcie (Orange style)
+        predikcia = model(vstup)
+        return float(predikcia[0])
     except:
         return 0.0
 
@@ -73,23 +77,23 @@ if 'kosik' not in st.session_state:
 with st.sidebar:
     st.header("Nastavenia")
     krajina = st.selectbox("Krajina:", ["SK", "CZ", "DE", "AT", "HU", "PL", "FR"])
-    lojalita = st.slider("Lojalita:", 0.0, 1.0, 0.5)
+    lojalita = st.slider("Lojalita zákazníka:", 0.0, 1.0, 0.5)
 
-with st.expander("➕ Pridať diel", expanded=True):
+with st.expander("➕ Pridať nový diel", expanded=True):
     c1, c2, c3 = st.columns(3)
     with c1:
         id_dielu = st.text_input("ID dielu", value="Diel_01")
-        n_ks = st.number_input("Kusy", min_value=1, value=10)
+        n_ks = st.number_input("Počet kusov", min_value=1, value=10)
         nar = st.selectbox("Náročnosť", ["1", "2", "3", "4", "5"], index=2)
     with c2:
-        cas = st.number_input("Čas (hod/ks)", value=0.5)
+        cas = st.number_input("Čas (hod/ks)", value=0.5, format="%.3f")
         mat = st.selectbox("Materiál", ["OCEL", "NEREZ", "FAREBNÉ KOVY", "PLAST"])
         akost = st.text_input("Akosť", value="1.0037")
     with c3:
-        tvar = st.selectbox("Tvar", ["KR", "STV", "PL"])
-        d = st.number_input("D (mm)", value=20.0)
-        l = st.number_input("L (mm)", value=100.0)
-        c_m = st.number_input("Cena mat. (€/ks)", value=1.5)
+        tvar = st.selectbox("Tvar polotovaru", ["KR", "STV", "PL"])
+        d = st.number_input("Rozmer D (mm)", value=20.0)
+        l = st.number_input("Dĺžka L (mm)", value=100.0)
+        c_m = st.number_input("Materiál (€/ks)", value=1.5)
         ko = st.number_input("Kooperácia (€/ks)", value=0.0)
 
     if st.button("Uložiť diel"):
@@ -101,12 +105,14 @@ with st.expander("➕ Pridať diel", expanded=True):
         st.success("Diel pridaný!")
 
 if st.session_state.kosik:
-    st.table(pd.DataFrame(st.session_state.kosik)[["id", "n", "mat_kat"]])
-    if st.button("🚀 VYPOČÍTAŤ", type="primary"):
+    st.subheader("📋 Zoznam dielov")
+    st.dataframe(pd.DataFrame(st.session_state.kosik)[["id", "n", "mat_kat"]])
+    
+    if st.button("🚀 VYPOČÍTAŤ AI CENU", type="primary"):
         if model:
             celk = sum(i['n'] for i in st.session_state.kosik)
             for d in st.session_state.kosik:
                 cena = predpovedaj_cenu(d, celk, lojalita, krajina)
                 st.write(f"**{d['id']}**: {cena:.2f} € / ks")
         else:
-            st.error("Model stále nie je načítaný.")
+            st.error("Model stále nie je načítaný. Skúste Reboot app.")
