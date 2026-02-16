@@ -4,7 +4,6 @@ import pandas as pd
 import numpy as np
 import requests
 from datetime import datetime
-from fpdf import FPDF
 
 # --- 1. KONFIGURÁCIA APLIKÁCIE ---
 st.set_page_config(page_title="Mecasys CP Generátor", layout="wide")
@@ -12,18 +11,7 @@ st.set_page_config(page_title="Mecasys CP Generátor", layout="wide")
 if 'kosik' not in st.session_state:
     st.session_state['kosik'] = []
 
-# --- 2. POMOCNÉ FUNKCIE (PDF A GOOGLE) ---
-
-# Funkcia na odstránenie diakritiky pre PDF (rieši latin-1 error)
-def clean_text(text):
-    if not text: return ""
-    chars = {'ž':'z','š':'s','č':'c','ř':'r','ď':'d','ť':'t','ň':'n','ľ':'l','ĺ':'l','ŕ':'r','á':'a','é':'e','í':'i','ó':'o','ú':'u','ý':'y','ä':'a','ô':'o',
-             'Ž':'Z','Š':'S','Č':'C','Ř':'R','Ď':'D','Ť':'T','Ň':'N','Ľ':'L','Ĺ':'L','Ŕ':'R','Á':'A','É':'E','Í':'I','Ó':'O','Ú':'U','Ý':'Y'}
-    for k, v in chars.items():
-        text = str(text).replace(k, v)
-    return text
-
-# Nová funkcia na ukladanie cez Google Formulár (všetkých 22 polí)
+# --- 2. POMOCNÁ FUNKCIA PRE GOOGLE FORM ---
 def ulozit_do_google_form(data):
     url = "https://docs.google.com/forms/d/e/1FAIpQLSf92s3nBMz6Oviq6WgNLyid9GmcNgAtQOAuWUVBPt9mcrotzw/formResponse"
     payload = {
@@ -55,40 +43,7 @@ def ulozit_do_google_form(data):
     except:
         st.error("Chyba pri zápise do Google tabuľky.")
 
-def generovat_pdf(firma, polozky, celkova_suma, cislo_cp, datum_cp):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", "B", 16)
-    pdf.cell(0, 10, clean_text("CENOVÁ PONUKA - MECASYS"), ln=True, align="C")
-    pdf.ln(5)
-    pdf.set_font("Arial", "", 10)
-    pdf.cell(0, 7, f"Zakaznik: {clean_text(firma)}", ln=True)
-    pdf.cell(0, 7, f"Cislo CP: {clean_text(cislo_cp)}", ln=True)
-    pdf.cell(0, 7, f"Datum vystavenia: {datum_cp.strftime('%d.%m.%Y')}", ln=True)
-    pdf.ln(10)
-    
-    pdf.set_font("Arial", "B", 10)
-    pdf.cell(80, 8, "Polozka", border=1)
-    pdf.cell(20, 8, "Ks", border=1, align="C")
-    pdf.cell(40, 8, "Cena/ks (EUR)", border=1, align="C")
-    pdf.cell(40, 8, "Spolu (EUR)", border=1, align="C")
-    pdf.ln()
-    
-    pdf.set_font("Arial", "", 10)
-    for p in polozky:
-        pdf.cell(80, 8, clean_text(str(p['Položka'])), border=1)
-        pdf.cell(20, 8, str(p['Ks']), border=1, align="C")
-        pdf.cell(40, 8, f"{p['Cena_ks']:.2f}", border=1, align="R")
-        pdf.cell(40, 8, f"{p['Spolu']:.2f}", border=1, align="R")
-        pdf.ln()
-        
-    pdf.ln(10)
-    pdf.set_font("Arial", "B", 12)
-    pdf.cell(0, 10, f"CELKOM BEZ DPH: {celkova_suma:.2f} EUR", ln=True, align="R")
-    return pdf.output(dest='S').encode('latin-1', errors='replace')
-
-# --- 3. DATABÁZY (Zákazníci a Materiály) ---
-# (Ponechané podľa tvojho kódu...)
+# --- 3. KOMPLETNÁ DATABÁZA ZÁKAZNÍKOV ---
 db_zakaznici = {
     "A2B, s.r.o.": (0.83, "SK"), "AAH PLASTICS Slovakia s. r. o.": (0.80, "SK"),
     "Adient Innotec Metal Technologies s.r.o.": (0.31, "SK"), "Adient Seating S.A.S.": (0.33, "FR"),
@@ -183,6 +138,7 @@ db_zakaznici = {
     "Yanfeng Namestovo": (0.82, "SK"), "Železiarstvo Páleník s.r.o.": (0.33, "SK"), "ZKW Slovakia s.r.o.": (0.44, "SK")
 }
 
+# --- 4. KOMPLETNÁ DATABÁZA MATERIÁLOV A HUSTOTY ---
 db_materialy = {
     "OCEĽ": {
         "1.6580": 7900.0, "1.0037": 7900.0, "1.0038": 7900.0, "1.0039": 7900.0, "1.0044": 7900.0,
@@ -213,7 +169,7 @@ db_materialy = {
     }
 }
 
-# --- 4. NAČÍTANIE MODELU ---
+# --- 5. NAČÍTANIE MODELU ---
 @st.cache_resource
 def load_model():
     try:
@@ -224,12 +180,12 @@ def load_model():
 
 model = load_model()
 
-# --- 5. UI APLIKÁCIE ---
+# --- 6. UI APLIKÁCIE ---
 st.title("⚙️ MECASYS - Master CP Generátor")
 
 with st.sidebar:
     st.header("Zákazník a CP")
-    cp_datum = st.date_input("CP_datum (Dátum ponuky):", datetime.now())
+    cp_datum = st.date_input("Dátum ponuky (CP_datum):", datetime.now())
     zoznam_firiem = ["--- NOVÝ ZÁKAZNÍK ---"] + sorted(db_zakaznici.keys())
     vyber_firmy = st.selectbox("Vyberte firmu:", zoznam_firiem)
     
@@ -247,7 +203,7 @@ st.subheader("Parametre komponentu")
 c1, c2, c3 = st.columns(3)
 
 with c1:
-    polozka_vstup = st.text_input("Názov / Kód dielu:")
+    polozka_vstup = st.text_input("ID_komponent (Názov dielu):")
     n_vstup = st.number_input("Počet kusov (n):", min_value=1, value=1)
     narocnost_vstup = st.selectbox("Náročnosť (1-5):", ["1", "2", "3", "4", "5"], index=2)
 
@@ -266,32 +222,34 @@ with c3:
     ko_cena_ks_vstup = st.number_input("Kooperácia (€/ks):", value=0.00)
 
 if st.button("➕ PRIDAŤ DO KOŠÍKA"):
+    # Výpočet váhy
     if "KR" in tvar_vstup:
         vaha_vypocet = (np.pi * (D_vstup**2) * L_vstup * hustota_val) / 4000000000
     else:
         vaha_vypocet = (D_vstup * D_vstup * L_vstup * hustota_val) / 1000000000
         
     st.session_state['kosik'].append({
-        "Položka": polozka_vstup, "Kusy (n)": n_vstup, "Čas výroby (hod/ks)": cas_vstup, "Náročnosť": narocnost_vstup,
+        "ID_komponent": polozka_vstup, "Kusy (n)": n_vstup, "Čas výroby (hod/ks)": cas_vstup, "Náročnosť": narocnost_vstup,
         "Kategória mat.": mat_kat, "Akosť": akost_vstup, "Tvar": "KR" if "KR" in tvar_vstup else "STV", 
         "Rozmer D": D_vstup, "Rozmer L": L_vstup, "Hustota": hustota_val, "Hmotnosť 1ks": vaha_vypocet, 
         "Cena_material_predpoklad": cena_komp_vstup, "ko_cena_ks": ko_cena_ks_vstup
     })
-    st.success(f"Položka '{polozka_vstup}' pridaná.")
+    st.success(f"Položka '{polozka_vstup}' pridaná do košíka.")
 
-# --- 6. KOŠÍK A FINÁLNY VÝPOČET ---
+# --- 7. KOŠÍK A FINÁLNA KALKULÁCIA ---
 if st.session_state['kosik']:
     st.divider()
-    df_prehlad = pd.DataFrame(st.session_state['kosik'])
-    st.write("### Aktuálny košík")
-    st.dataframe(df_prehlad[["Položka", "Kusy (n)", "Akosť", "Hmotnosť 1ks", "Cena_material_predpoklad"]])
+    st.write("### 🛒 Položky v príprave")
+    df_temp = pd.DataFrame(st.session_state['kosik'])
+    st.dataframe(df_temp[["ID_komponent", "Kusy (n)", "Akosť", "Hmotnosť 1ks"]])
 
-    if st.button("🏁 GENEROVAŤ A ULOŽIŤ PONUKU", type="primary"):
+    if st.button("🏁 NACENIŤ A ODOSLAŤ PONUKU", type="primary"):
         celkovy_objem_cp = sum(i['Kusy (n)'] for i in st.session_state['kosik'])
-        polozky_pdf, suma_cp = [], 0
         datum_pre_model = cp_datum.strftime("%Y-%m-%d")
+        vysledky_pre_tabulku = []
 
         for p in st.session_state['kosik']:
+            # Predikcia ceny
             if model:
                 try:
                     vstup_data = pd.DataFrame([{
@@ -305,24 +263,30 @@ if st.session_state['kosik']:
                         "material_HUSTOTA": p["Hustota"], "material_AKOST": p["Akosť"]
                     }])
                     j_cena = float(model.predict(vstup_data)[0])
-                except:
+                except Exception as e:
                     j_cena = (p["Čas výroby (hod/ks)"] * 45) + p["Cena_material_predpoklad"] + p["ko_cena_ks"]
             else:
                 j_cena = (p["Čas výroby (hod/ks)"] * 45) + p["Cena_material_predpoklad"] + p["ko_cena_ks"]
             
             c_cena = j_cena * p["Kusy (n)"]
-            suma_cp += c_cena
-            polozky_pdf.append({"Položka": p["Položka"], "Ks": p["Kusy (n)"], "Cena_ks": j_cena, "Spolu": c_cena})
             
-            # TU SA POSIELAJÚ DÁTA DO TVOJEJ TABUĽKY (Všetkých 22 polí)
-            data_do_tabulky = {
+            # Príprava riadku pre zobrazenie
+            vysledky_pre_tabulku.append({
+                "ID_komponent": p["ID_komponent"],
+                "Množstvo (ks)": p["Kusy (n)"],
+                "Jednotková cena (€)": f"{j_cena:.2f}",
+                "Celková cena (€)": f"{c_cena:.2f}"
+            })
+
+            # Odoslanie do Google Form (všetkých 22 polí)
+            data_log = {
                 "cas_zapisu": datetime.now().strftime("%d.%m.%Y %H:%M:%S"),
                 "cp_cislo": cislo_cp,
                 "zakaznik": finalny_zakaznik,
                 "krajina": krajina,
                 "lojalita": str(lojalita),
-                "id_komponent": "N/A", # Ak máš ID komponentu, daj ho sem
-                "polozka": p["Položka"],
+                "id_komponent": p["ID_komponent"],
+                "polozka": p["ID_komponent"],
                 "kusy": str(p["Kusy (n)"]),
                 "cp_objem": str(celkovy_objem_cp),
                 "cas_vyroby": str(p["Čas výroby (hod/ks)"]),
@@ -339,14 +303,18 @@ if st.session_state['kosik']:
                 "jednotkova_cena": f"{j_cena:.2f}",
                 "celkova_suma": f"{c_cena:.2f}"
             }
-            ulozit_do_google_form(data_do_tabulky)
+            ulozit_do_google_form(data_log)
 
-        st.success("✅ Ponuka bola vygenerovaná a uložená do Google Tabuľky!")
-        st.balloons()
+        # Zobrazenie výslednej tabuľky
+        st.subheader("📊 Výsledná kalkulácia")
+        st.table(pd.DataFrame(vysledky_pre_tabulku))
         
-        pdf_raw = generovat_pdf(finalny_zakaznik, polozky_pdf, suma_cp, cislo_cp, cp_datum)
-        st.download_button("📥 STIAHNUŤ PDF PONUKU", data=pdf_raw, file_name=f"CP_{cislo_cp}.pdf", mime="application/pdf")
+        celkova_hodnota = sum(float(v["Celková cena (€)"]) for v in vysledky_pre_tabulku)
+        st.metric("CELKOVÁ SUMA PONUKY (BEZ DPH)", f"{celkova_hodnota:.2f} €")
+        
+        st.success("Dáta boli úspešne spracované a odoslané do Google tabuľky.")
+        st.balloons()
 
-    if st.button("🗑️ VYMAZAŤ KOŠÍK"):
+    if st.button("🗑️ VYMAZAŤ CELÝ KOŠÍK"):
         st.session_state['kosik'] = []
         st.rerun()
