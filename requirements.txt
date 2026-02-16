@@ -1,5 +1,5 @@
 streamlit
 pandas
 numpy==1.23.5
-setuptools
-orange3==3.36.2
+scikit-learn==1.2.2
+Orange3-core
