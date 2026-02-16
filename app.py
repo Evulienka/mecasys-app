@@ -9,6 +9,7 @@ from streamlit_gsheets import GSheetsConnection
 # --- 1. KONFIGURÁCIA APLIKÁCIE ---
 st.set_page_config(page_title="Mecasys CP Generátor", layout="wide")
 
+# Inicializácia košíka, ak ešte neexistuje
 if 'kosik' not in st.session_state:
     st.session_state['kosik'] = []
 
@@ -27,7 +28,7 @@ def load_model():
 model = load_model()
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# --- 3. KOMPLETNÁ DATABÁZA ZÁKAZNÍKOV (ZO VŠETKÝCH SCREENSHOTOV) ---
+# --- 3. KOMPLETNÁ DATABÁZA ZÁKAZNÍKOV ---
 db_zakaznici = {
     "A2B, s.r.o.": (0.83, "SK"), "AAH PLASTICS Slovakia s. r. o.": (0.80, "SK"),
     "Adient Innotec Metal Technologies s.r.o.": (0.31, "SK"), "Adient Seating S.A.S.": (0.33, "FR"),
@@ -122,7 +123,7 @@ db_zakaznici = {
     "Yanfeng Namestovo": (0.82, "SK"), "Železiarstvo Páleník s.r.o.": (0.33, "SK"), "ZKW Slovakia s.r.o.": (0.44, "SK")
 }
 
-# --- 4. KOMPLETNÁ DATABÁZA MATERIÁLOV (AKOSTI A HUSTOTY) ---
+# --- 4. KOMPLETNÁ DATABÁZA MATERIÁLOV ---
 db_materialy = {
     "OCEĽ": {
         "1.6580": 7900.0, "1.0037": 7900.0, "1.0038": 7900.0, "1.0039": 7900.0, "1.0044": 7900.0,
@@ -161,20 +162,36 @@ def ulozit_do_gsheets(riadok_dict):
         aktualizovane_df = pd.concat([df_existujuce, novy_df], ignore_index=True)
         conn.update(spreadsheet=URL_TABULKY, data=aktualizovane_df)
     except Exception as e:
-        st.error(f"Nepodarilo sa uložiť dáta do Google Tabuľky: {e}")
+        st.error(f"Nepodarilo sa uložiť dáta: {e}")
 
-def generovat_pdf(firma, polozky, celkova_suma, cislo_cp):
+def generovat_pdf(firma, polozky, celkova_suma, cislo_cp, datum_cp):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", "B", 16)
     pdf.cell(0, 10, "CENOVÁ PONUKA - MECASYS", ln=True, align="C")
-    pdf.ln(10)
+    pdf.ln(5)
     pdf.set_font("Arial", "", 10)
     pdf.cell(0, 7, f"Zákazník: {firma}", ln=True)
     pdf.cell(0, 7, f"Číslo CP: {cislo_cp}", ln=True)
+    pdf.cell(0, 7, f"Dátum vystavenia: {datum_cp.strftime('%d.%m.%Y')}", ln=True)
     pdf.ln(10)
+    
+    # Hlavička tabuľky
+    pdf.set_font("Arial", "B", 10)
+    pdf.cell(80, 8, "Položka", border=1)
+    pdf.cell(20, 8, "Ks", border=1, align="C")
+    pdf.cell(40, 8, "Cena/ks (EUR)", border=1, align="C")
+    pdf.cell(40, 8, "Spolu (EUR)", border=1, align="C")
+    pdf.ln()
+    
+    pdf.set_font("Arial", "", 10)
     for p in polozky:
-        pdf.cell(0, 8, f"{p['Položka']} | {p['Ks']} ks | {p['Cena_ks']:.2f} EUR/ks | Spolu: {p['Spolu']:.2f} EUR", ln=True)
+        pdf.cell(80, 8, str(p['Položka']), border=1)
+        pdf.cell(20, 8, str(p['Ks']), border=1, align="C")
+        pdf.cell(40, 8, f"{p['Cena_ks']:.2f}", border=1, align="R")
+        pdf.cell(40, 8, f"{p['Spolu']:.2f}", border=1, align="R")
+        pdf.ln()
+        
     pdf.ln(10)
     pdf.set_font("Arial", "B", 12)
     pdf.cell(0, 10, f"CELKOM BEZ DPH: {celkova_suma:.2f} EUR", ln=True, align="R")
@@ -185,7 +202,10 @@ st.title("⚙️ MECASYS - Master CP Generátor")
 
 with st.sidebar:
     st.header("Zákazník a CP")
-    # Dynamicky zoradený zoznam firiem
+    
+    # Parameter CP_datum (nastavený na dnes, editovateľný)
+    cp_datum = st.date_input("CP_datum (Dátum ponuky):", datetime.now())
+    
     zoznam_firiem = ["--- NOVÝ ZÁKAZNÍK ---"] + sorted(db_zakaznici.keys())
     vyber_firmy = st.selectbox("Vyberte firmu:", zoznam_firiem)
     
@@ -195,22 +215,25 @@ with st.sidebar:
     else:
         finalny_zakaznik = vyber_firmy
         lojalita, krajina = db_zakaznici[vyber_firmy]
-        st.info(f"Firma: {finalny_zakaznik}\nKrajina: {krajina}\nLojalita: {lojalita}")
+        st.info(f"Krajina: {krajina} | Lojalita: {lojalita}")
     
-    cislo_cp = st.text_input("Číslo CP:", value=f"{datetime.now().year}-0001_MEC")
+    cislo_cp = st.text_input("Číslo CP:", value=f"{cp_datum.year}-0001_MEC")
 
 st.subheader("Parametre komponentu")
 c1, c2, c3 = st.columns(3)
+
 with c1:
     polozka = st.text_input("Názov / Kód dielu:")
     n = st.number_input("Počet kusov (n):", min_value=1, value=1)
     narocnost = st.selectbox("Náročnosť (1-5):", ["1", "2", "3", "4", "5"], index=2)
+
 with c2:
     cas = st.number_input("Čas výroby (hod/ks):", min_value=0.001, format="%.3f", value=0.100)
     mat_kat = st.selectbox("Kategória materiálu:", list(db_materialy.keys()))
     akost = st.selectbox("Akosť materiálu:", list(db_materialy[mat_kat].keys()))
     hustota = db_materialy[mat_kat][akost]
     st.caption(f"Hustota: {hustota} kg/m³")
+
 with c3:
     tvar = st.selectbox("Tvar polotovaru:", ["KR (Kruh)", "STV (Štvorec)"])
     D = st.number_input("Rozmer D (mm):", value=20.0)
@@ -231,7 +254,7 @@ if st.button("➕ PRIDAŤ DO KOŠÍKA"):
         "Rozmer D": D, "Rozmer L": L, "Hustota": hustota, "Hmotnosť 1ks": vaha, 
         "Cena_material_predpoklad": cena_komp, "ko_cena_ks": ko_cena_ks
     })
-    st.success(f"Diel {polozka} bol pridaný.")
+    st.success(f"Položka '{polozka}' pridaná.")
 
 # --- 7. KOŠÍK A FINÁLNY VÝPOČET ---
 if st.session_state['kosik']:
@@ -244,21 +267,32 @@ if st.session_state['kosik']:
         celkovy_objem = sum(i['Kusy (n)'] for i in st.session_state['kosik'])
         polozky_pdf, suma_cp = [], 0
         
+        # Príprava dátumu pre model (ako string alebo timestamp podľa potreby modelu)
+        datum_pre_model = cp_datum.strftime("%Y-%m-%d")
+
         for p in st.session_state['kosik']:
             if model:
                 try:
                     vstup = pd.DataFrame([{
-                        "CP_objem": celkovy_objem, "n_komponent": p["Kusy (n)"],
+                        "CP_datum": datum_pre_model,  # Posielame dátum do modelu
+                        "CP_objem": celkovy_objem, 
+                        "n_komponent": p["Kusy (n)"],
                         "cas_v_predpoklad_komponent (hod)": p["Čas výroby (hod/ks)"],
-                        "v_narocnost": p["Náročnosť"], "zakaznik_lojalita": lojalita, "zakaznik_krajina": krajina,
-                        "hmotnost": p["Hmotnosť 1ks"], "cena_material_predpoklad": p["Cena_material_predpoklad"], 
-                        "ko_cena_ks": p["ko_cena_ks"], "material_nazov": p["Kategória mat."],
-                        "tvar_polotovaru": p["Tvar"], "D(mm)": p["Rozmer D"], "L(mm)": p["Rozmer L"],
-                        "material_HUSTOTA": p["Hustota"], "material_AKOST": p["Akosť"]
+                        "v_narocnost": int(p["Náročnosť"]), 
+                        "zakaznik_lojalita": lojalita, 
+                        "zakaznik_krajina": krajina,
+                        "hmotnost": p["Hmotnosť 1ks"], 
+                        "cena_material_predpoklad": p["Cena_material_predpoklad"], 
+                        "ko_cena_ks": p["ko_cena_ks"], 
+                        "material_nazov": p["Kategória mat."],
+                        "tvar_polotovaru": p["Tvar"], 
+                        "D(mm)": p["Rozmer D"], 
+                        "L(mm)": p["Rozmer L"],
+                        "material_HUSTOTA": p["Hustota"], 
+                        "material_AKOST": p["Akosť"]
                     }])
                     j_cena = float(model.predict(vstup)[0])
                 except:
-                    # Záložný výpočet ak model zlyhá
                     j_cena = (p["Čas výroby (hod/ks)"] * 45) + p["Cena_material_predpoklad"] + p["ko_cena_ks"]
             else:
                 j_cena = (p["Čas výroby (hod/ks)"] * 45) + p["Cena_material_predpoklad"] + p["ko_cena_ks"]
@@ -269,13 +303,17 @@ if st.session_state['kosik']:
             
             # Zápis do cloudu
             ulozit_do_gsheets({
-                "Dátum": datetime.now().strftime("%d.%m.%Y %H:%M"), "Číslo CP": cislo_cp,
-                "Zákazník": finalny_zakaznik, "Položka": p["Položka"], "Ks": p["Kusy (n)"],
-                "Jednotková cena": round(j_cena, 2), "Spolu": round(c_cena, 2)
+                "Dátum": cp_datum.strftime("%d.%m.%Y"),
+                "Číslo CP": cislo_cp,
+                "Zákazník": finalny_zakaznik,
+                "Položka": p["Položka"],
+                "Ks": p["Kusy (n)"],
+                "Jednotková cena": round(j_cena, 2),
+                "Spolu": round(c_cena, 2)
             })
 
         st.balloons()
-        pdf_raw = generovat_pdf(finalny_zakaznik, polozky_pdf, suma_cp, cislo_cp)
+        pdf_raw = generovat_pdf(finalny_zakaznik, polozky_pdf, suma_cp, cislo_cp, cp_datum)
         st.download_button("📥 STIAHNUŤ PDF PONUKU", data=pdf_raw, file_name=f"CP_{cislo_cp}.pdf", mime="application/pdf")
 
     if st.button("🗑️ VYMAZAŤ KOŠÍK"):
