@@ -1,13 +1,23 @@
 import os
+import sys
+
+# --- FORZÍROVANÉ NAČÍTANIE PKG_RESOURCES ---
+try:
+    import pkg_resources
+except ImportError:
+    import pip._vendor.pkg_resources as pkg_resources
+    sys.modules['pkg_resources'] = pkg_resources
+
+# Zakázanie GUI
+os.environ['QT_QPA_PLATFORM'] = 'offscreen'
+
 import streamlit as st
 import pickle
 import pandas as pd
 
-# Oprava pre Orange
-os.environ['QT_QPA_PLATFORM'] = 'offscreen'
+st.set_page_config(page_title="MECASYS Master AI", page_icon="⚙️")
 
-st.title("⚙️ MECASYS Master AI - Test")
-
+# --- NAČÍTANIE MODELU ---
 @st.cache_resource
 def load_model():
     if os.path.exists("model.pkcls"):
@@ -16,14 +26,20 @@ def load_model():
             with open("model.pkcls", "rb") as f:
                 return pickle.load(f)
         except Exception as e:
-            st.error(f"Chyba: {e}")
+            st.error(f"Chyba pri otváraní modelu: {e}")
             return None
     return None
 
 model = load_model()
 
+# --- ROZHRANIE ---
+st.title("⚙️ MECASYS Master AI")
+
 if model:
-    st.success("✅ HURÁ! Model je úspešne načítaný.")
-    st.write("Teraz môžeme začať počítať ceny.")
+    st.success("✅ Model je úspešne načítaný!")
+    st.balloons() # Malá oslava, keď to naskočí
+    
+    # Tu bude tvoj formulár na výpočet...
+    st.info("Teraz mi napíš a pridáme zvyšok výpočtovej logiky.")
 else:
-    st.info("⏳ Načítavam model alebo konfigurujem prostredie...")
+    st.warning("⏳ Systém sa konfiguruje. Ak vidíte červenú chybu, skúste 'Reboot app'.")
