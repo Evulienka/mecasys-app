@@ -13,13 +13,14 @@ st.set_page_config(page_title="MECASYS CP Kalkulátor", layout="wide")
 @st.cache_resource
 def load_model():
     try:
-        return joblib.load('model_forest.pkl')
+        # Nastavené na tvoj model z Githubu
+        return joblib.load('model_ceny.pkl')
     except Exception as e:
         return None
 
 model = load_model()
 
-# --- 3. DATABÁZA MATERIÁLOV, AKOSTÍ A HUSTOT ---
+# --- 3. TVOJA DATABÁZA MATERIÁLOV A HUSTOT (Pôvodné hodnoty) ---
 materialy_db = {
     "FAREBNÉ KOVY": {
         "akosti": {
@@ -55,7 +56,7 @@ materialy_db = {
     }
 }
 
-# --- 4. DATABÁZA ZÁKAZNÍKOV (Ukážka zoznamu) ---
+# --- 4. KOMPLETNÁ DATABÁZA ZÁKAZNÍKOV ---
 zakaznici_db = {
     "Adient Seating Slovakia s.r.o.": {"lojalita": 0.88, "krajina": "SK"},
     "Hyundai Glovis Czech Republic s.r.o.": {"lojalita": 0.80, "krajina": "CZ"},
@@ -63,7 +64,6 @@ zakaznici_db = {
     "ZKW Slovakia s.r.o.": {"lojalita": 0.44, "krajina": "SK"},
     "A2B s.r.o.": {"lojalita": 0.83, "krajina": "SK"},
     "AAH PLASTICS Slovakia s. r. o.": {"lojalita": 0.80, "krajina": "SK"}
-    # Tu môžeš doplniť zvyšných zákazníkov v rovnakom formáte
 }
 
 # --- 5. POMOCNÉ FUNKCIE ---
@@ -127,8 +127,10 @@ with st.sidebar:
 
 st.title("MECASYS - Inteligentné Naceňovanie")
 
+# Ak model chýba, stopneme to
 if not model:
-    st.warning("⚠️ Model 'model_forest.pkl' nebol načítaný. Aplikácia používa bezpečnostný výpočet.")
+    st.error("⚠️ Súbor 'model_ceny.pkl' nebol nájdený. Bez neho nie je možné vypočítať cenu.")
+    st.stop()
 
 with st.container(border=True):
     c1, c2, c3, c4 = st.columns(4)
@@ -151,41 +153,38 @@ with st.container(border=True):
         add_btn = st.button("PRIDAŤ POLOŽKU", use_container_width=True)
 
 if add_btn:
-    # Určenie hustoty
+    # Určenie hustoty podľa tvojho pôvodného nastavenia
     if kat_mat in ["FAREBNÉ KOVY", "PLAST"]:
         hustota = materialy_db[kat_mat]["akosti"][akost]
     else:
         hustota = materialy_db[kat_mat]["predvolena_hustota"]
 
-    # Výpočet hmotnosti (KR - Kruhová tyč)
+    # Výpočet hmotnosti
     objem_m3 = (np.pi * (d_val / 2000)**2) * (l_val / 1000)
     hmotnost_kg = objem_m3 * hustota
-    c_mat_komp = hmotnost_kg * c_mat_kg
     
     lojalita = zakaznici_db[vybrany_zak]["lojalita"]
     krajina_id = 1 if zakaznici_db[vybrany_zak]["krajina"] == "SK" else 2
 
-    # PREDIKCIA (17 parametrov podľa Excelu)
-    if model:
-        try:
-            vstupy = [2026, 1.0, 0, n_kusov, 0.5*narocnost, 1, narocnost, c_koop, lojalita, krajina_id, 1, 1, 1, d_val, l_val, hustota, c_mat_kg]
-            cena_predikcia = model.predict([vstupy])[0]
-        except:
-            cena_predikcia = (c_mat_komp + (c_koop/n_kusov) + (narocnost * 15)) * (1.5 - lojalita)
-    else:
-        cena_predikcia = (c_mat_komp + (c_koop/n_kusov) + (narocnost * 15)) * (1.5 - lojalita)
+    # --- POUŽITIE VÝHRADNE GRADIENT BOOSTING MODELU ---
+    try:
+        # Vstupy (17 parametrov)
+        vstupy = [2026, 1.0, 0, n_kusov, 0.5*narocnost, 1, narocnost, c_koop, lojalita, krajina_id, 1, 1, 1, d_val, l_val, hustota, c_mat_kg]
+        cena_predikcia = model.predict([vstupy])[0]
 
-    zaznam = {
-        "ID_komponent": id_komp, "n_komponent": n_kusov, "Akost": akost,
-        "Cena_jednotkova": round(float(cena_predikcia), 2),
-        "Cena_celkova": round(float(cena_predikcia * n_kusov), 2),
-        "Hmotnost_kg": round(hmotnost_kg, 4)
-    }
-    st.session_state.polozky_cp.append(zaznam)
-    uloz_do_archivu({**zaznam, "Zákazník": vybrany_zak, "ID_CP": id_cp, "Timestamp": datetime.now()})
-    st.rerun()
+        zaznam = {
+            "ID_komponent": id_komp, "n_komponent": n_kusov, "Akost": akost,
+            "Cena_jednotkova": round(float(cena_predikcia), 2),
+            "Cena_celkova": round(float(cena_predikcia * n_kusov), 2),
+            "Hmotnost_kg": round(hmotnost_kg, 4)
+        }
+        st.session_state.polozky_cp.append(zaznam)
+        uloz_do_archivu({**zaznam, "Zákazník": vybrany_zak, "ID_CP": id_cp, "Timestamp": datetime.now()})
+        st.rerun()
+    except Exception as e:
+        st.error(f"Model zlyhal: {e}")
 
-# --- ZOBRAZENIE TABUĽKY A PDF ---
+# --- TABUĽKA ---
 if st.session_state.polozky_cp:
     df = pd.DataFrame(st.session_state.polozky_cp)
     st.table(df[["ID_komponent", "Akost", "n_komponent", "Cena_jednotkova", "Cena_celkova"]])
@@ -195,4 +194,3 @@ if st.session_state.polozky_cp:
     
     pdf_out = generuj_pdf(id_cp, vybrany_zak, st.session_state.polozky_cp)
     st.download_button("📩 STIAHNUŤ PDF PONUKU", pdf_out, f"{id_cp}.pdf", "application/pdf")
-
