@@ -14,7 +14,7 @@ MODEL_URL = "https://raw.githubusercontent.com/Evulienka/mecasys-app/main/model_
 ENCODERS_URL = "https://raw.githubusercontent.com/Evulienka/mecasys-app/main/encoders.pkl"
 
 # TVOJA NOVÁ URL Z GOOGLE APPS SCRIPTU
-APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzLZaIEd8LGsbwu_W3DEfRnX_KkBzOzJ5Y4avOdZxS_9T95qAnWl0BUs6YP7WBQjd69/exec"
+APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw62kBIVf_BypILlGu8xwQTDldvS-8Up4aQqcAv8luSGR3g9lYa3J8nRyvYsTzX40Kk/exec"
 
 @st.cache_resource
 def load_assets():
@@ -337,3 +337,4 @@ if model and encoders:
             st.rerun()
 else:
     st.error("Chyba načítania modelov.")
+
