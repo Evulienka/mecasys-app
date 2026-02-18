@@ -12,7 +12,9 @@ st.set_page_config(page_title="MECASYS AI Expert", layout="wide")
 
 MODEL_URL = "https://raw.githubusercontent.com/Evulienka/mecasys-app/main/model_ceny.pkl"
 ENCODERS_URL = "https://raw.githubusercontent.com/Evulienka/mecasys-app/main/encoders.pkl"
-APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz_7fFmD_Y6V8P0A-L-fR_J_T-vY7h8U_E1Y-l-Y_Y/exec"
+
+# TVOJA NOVÁ URL Z GOOGLE APPS SCRIPTU
+APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzLZaIEd8LGsbwu_W3DEfRnX_KkBzOzJ5Y4avOdZxS_9T95qAnWl0BUs6YP7WBQjd69/exec"
 
 @st.cache_resource
 def load_assets():
@@ -54,7 +56,7 @@ MATERIAL_DATA = {
     }
 }
 
-# --- 3. KOMPLETNÝ ZOZNAM ZÁKAZNÍKOV (110+) ---
+# --- 3. KOMPLETNÝ ZOZNAM ZÁKAZNÍKOV ---
 CUSTOMER_MAP = {
     "A2B, s.r.o.": {"krajina": "SK", "lojalita": 0.83},
     "AAH PLASTICS Slovakia s. r. o.": {"krajina": "SK", "lojalita": 0.80},
@@ -177,7 +179,7 @@ CUSTOMER_MAP = {
     "Yanfeng Namestovo": {"krajina": "SK", "lojalita": 0.82},
     "ZKW Slovakia s.r.o.": {"krajina": "SK", "lojalita": 0.44}
 } 
-    
+
 if 'kosik' not in st.session_state:
     st.session_state.kosik = []
 
@@ -243,7 +245,7 @@ if model and encoders:
 
         if st.form_submit_button("➕ PRIDAŤ POLOŽKU"):
             hustota = MATERIAL_DATA[m_cat][m_akost]
-            # 
+            # Výpočet hmotnosti
             weight = (np.pi * (d_val**2) * l_val * hustota) / 4000000000
             st.session_state.kosik.append({
                 "id": item_id, "ks": qty, "kategoria": m_cat, "akost": m_akost,
@@ -297,13 +299,41 @@ if model and encoders:
             
             pdf_bytes = create_pdf(st.session_state.kosik, cp_num, sel_cust)
             st.download_button("📥 STIAHNUŤ PDF", pdf_bytes, f"{cp_num}.pdf")
+            
+            # --- ODOSIELANIE DO GOOGLE TABUĽKY ---
             try:
-                requests.post(APPS_SCRIPT_URL, json=st.session_state.kosik, timeout=10)
-            except: pass
+                # Pripravíme dáta s CP číslom a Zákazníkom pre každý riadok
+                payload = []
+                for item in st.session_state.kosik:
+                    payload.append({
+                        "cp_cislo": cp_num,
+                        "zakaznik": sel_cust,
+                        "krajina": item['krajina'],
+                        "lojalita": item['lojalita'],
+                        "id": item['id'],
+                        "ks": item['ks'],
+                        "kategoria": item['kategoria'],
+                        "akost": item['akost'],
+                        "hustota": item['hustota'],
+                        "hmotnost": item['hmotnost'],
+                        "d": item['d'],
+                        "l": item['l'],
+                        "cas": item['cas'],
+                        "mat_cena": item['mat_cena'],
+                        "kooperacia": item['kooperacia'],
+                        "narocnost": item['narocnost'],
+                        "tvar": item['tvar'],
+                        "cena_ai": item.get('cena_ai', 0.0)
+                    })
+                
+                response = requests.post(APPS_SCRIPT_URL, json=payload, timeout=10)
+                if response.status_code == 200:
+                    st.info("✅ Dáta boli úspešne archivované v Google Sheets.")
+            except Exception as e:
+                st.warning(f"⚠️ Archivácia zlyhala, ale PDF je pripravené. (Chyba: {e})")
 
         if st.button("🗑️ VYMAZAŤ"):
             st.session_state.kosik = []
             st.rerun()
 else:
     st.error("Chyba načítania modelov.")
-
